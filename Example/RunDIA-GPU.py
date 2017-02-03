@@ -5,9 +5,9 @@ sys.path.append('/home/mda45/PythonPackages')
 use_GPU = True
 
 if use_GPU:
-    from pyDIA import DIA_GPU as DIA
+    from Code import DIA_GPU as DIA
 else:
-    from pyDIA import DIA_CPU as DIA
+    from Code import DIA_CPU as DIA
 
 params = DIA.Parameters()
 params.use_GPU = use_GPU
