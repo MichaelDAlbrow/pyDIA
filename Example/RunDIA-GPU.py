@@ -12,7 +12,7 @@ else:
 params = DIA.Parameters()
 params.use_GPU = use_GPU
 
-from pyDIA import calibration_functions as cal
+from Code import calibration_functions as cal
 
 params.n_parallel = 1
 params.gain = 1.9
