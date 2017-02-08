@@ -1,5 +1,9 @@
 import sys
 import os
+
+#
+# Change this to your pyDIA install location
+#
 sys.path.append('/Users/mda45/Projects/pyDIA/Test/pyDIA-master')
 
 use_GPU = False
