@@ -1,6 +1,10 @@
 import sys
 import os
-sys.path.append('/home/mda45/PythonPackages')
+
+#
+# Change this to your pyDIA install location
+#
+sys.path.append('/Users/mda45/Projects/pyDIA/Test/pyDIA-master')
 
 use_GPU = False
 
@@ -12,9 +16,9 @@ else:
 params = DIA.Parameters()
 params.use_GPU = use_GPU
 
-from pyDIA import calibration_functions as cal
+from Code import calibration_functions as cal
 
-params.n_parallel = 4
+params.n_parallel = 3
 params.gain = 1.9
 params.readnoise = 5.0
 params.name_pattern = 'A*.fits'

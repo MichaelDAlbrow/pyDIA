@@ -19,7 +19,7 @@ def read_fits_file(file,slice=None):
         hdr = f[0].header
     else:
         data, hdr = fits.getdata(file, header=True)
-    return data, hdr
+    return np.float64(data), hdr
 
 
 def write_image(image,file):
