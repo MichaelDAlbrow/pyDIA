@@ -270,9 +270,9 @@ def compute_fwhm(f,params,width=20,seeing_file='seeing'):
         image -= bgnd
         signal = image.sum()/image.size
         c = fftconvolve(image, image[::-1, ::-1])
-        x1 = round(c.shape[0]*0.5)
-        x2 = round(c.shape[0]*0.5+width)
-        y1 = round(c.shape[1]*0.5)
+        x1 = int(round(c.shape[0]*0.5))
+        x2 = int(round(c.shape[0]*0.5+width))
+        y1 = int(round(c.shape[1]*0.5))
         xx = np.arange(x2-x1+1)
         xnew = np.linspace(0,x2-x1,1000)
         fint = interp1d(xx,c[x1:x2+1,y1]-np.min(c[x1:x2+1,y1]),kind='cubic')
