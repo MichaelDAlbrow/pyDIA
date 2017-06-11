@@ -9,13 +9,14 @@ def positional_shift(R,T):
     Tc = T[10:-10,10:-10]
     c = fftconvolve(Rc, Tc[::-1, ::-1])
     cind = np.where(c == np.max(c))
-    csmall = c[cind[0]-10:cind[0]+10,cind[1]-10:cind[1]+10]
-    csmall = c[cind[0]-6:cind[0]+7,cind[1]-6:cind[1]+7]
+    print cind
+    csmall = c[cind[0][0]-10:cind[0][0]+10,cind[1][0]-10:cind[1][0]+10]
+    csmall = c[cind[0][0]-6:cind[0][0]+7,cind[1][0]-6:cind[1][0]+7]
     X,Y = np.indices(csmall.shape)
     total =csmall.sum()
-    dx = (X*csmall).sum()/total - 6 + cind[0] - c.shape[0]/2
-    dy = (Y*csmall).sum()/total - 6 + cind[1] - c.shape[1]/2
-    return dx[0], dy[0]
+    dx = (X*csmall).sum()/total - 6 + cind[0][0] - c.shape[0]/2.0
+    dy = (Y*csmall).sum()/total - 6 + cind[1][0] - c.shape[1]/2.0
+    return dx, dy
 
 
 def register(R,T,params):
