@@ -44,8 +44,8 @@ def register(R,T,params):
     #    Tc[saturated_pixels[0][k],saturated_pixels[1][k]]= np.median(T.data[px[q],py[q]])
     c = fftconvolve(Rc, Tc[::-1, ::-1])
     cind = np.where(c == np.max(c))
-    xshift = cind[0]-Rc.shape[0]+1
-    yshift = cind[1]-Rc.shape[1]+1
+    xshift = cind[0][0]-Rc.shape[0]+1
+    yshift = cind[1][0]-Rc.shape[1]+1
     imint = max(0,-xshift)
     imaxt = min(R.shape[0],R.shape[0]-xshift)
     jmint = max(0,-yshift)
