@@ -32,21 +32,15 @@ def write_image(image,file):
 def write_kernel_table(file,kernel_index,extended_basis,coeffs,params):
     if os.path.exists(file):
         os.remove(file)
-    table1 = fits.new_table(fits.ColDefs(
-        [fits.Column(name='x',format='I',array=kernel_index[:,0]),
-         fits.Column(name='y',format='I',array=kernel_index[:,1]),
-         fits.Column(name='extended',format='I5',array=extended_basis)]),
-                            tbtype='TableHDU')
-    table2 = fits.new_table(fits.ColDefs(
-        [fits.Column(name='Spatial type',format='A4',
-                     array=np.array(['PDEG','SDEG','BDEG'])),
-         fits.Column(name='degree',format='I',
-                     array=np.array([params.pdeg,params.sdeg,
-                                     params.bdeg]))]),
-                            tbtype='TableHDU')
-    table3 = fits.new_table(fits.ColDefs(
-        [fits.Column(name='Coefficients',format='E',array=coeffs)]),
-                            tbtype='TableHDU')
+    table1 = fits.TableHDU.from_columns([  \
+        fits.Column(name='x',format='I',array=kernel_index[:,0]), \
+        fits.Column(name='y',format='I',array=kernel_index[:,1]), \
+        fits.Column(name='extended',format='I5',array=extended_basis)])
+    table2 = fits.TableHDU.from_columns([  \
+        fits.Column(name='Spatial type',format='A4',array=np.array(['PDEG','SDEG','BDEG'])), \
+        fits.Column(name='degree',format='I',array=np.array([params.pdeg,params.sdeg,params.bdeg]))])
+    table3 = fits.TableHDU.from_columns(  \
+        [fits.Column(name='Coefficients',format='E',array=coeffs)])
     hdu = fits.PrimaryHDU()
     hdulist = fits.HDUList([hdu,table1,table2,table3])
     hdulist.writeto(file)
