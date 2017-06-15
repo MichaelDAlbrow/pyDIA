@@ -61,7 +61,7 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0,3)):
     xx = np.linspace(xmin,xmax,1000)
     
     ax = fig.add_subplot(221, position=rect_histx)
-    hval, bins, _ = ax.hist(mag[p,3],range=(xmin,xmax),bins=(xmax-xmin)/binsize+1,
+    hval, bins, _ = ax.hist(mag[p,3],range=(xmin,xmax),bins=int((xmax-xmin)/binsize+1),
                             normed=True,alpha=0.3)
     kde_skl = KernelDensity(kernel='epanechnikov',bandwidth=bandwidth)
     sample = mag[p,3]
@@ -73,7 +73,7 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0,3)):
     ax.set_title(dir)
 
     ax = fig.add_subplot(221, position=rect_histy)
-    ax.hist(25-2.5*np.log10(flux[p,0]),range=(ymin,ymax),bins=(ymax-ymin)/binsize+1,
+    ax.hist(25-2.5*np.log10(flux[p,0]),range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
             orientation='horizontal',normed=True,alpha=0.3)
     ax.xaxis.set_major_formatter(nullfmt)
     ax.yaxis.set_major_formatter(nullfmt)
