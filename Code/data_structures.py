@@ -11,7 +11,7 @@ class EmptyBase(object): pass
 
 
 class Observation(object):
-    "Container for all observation attributes"
+    """Container for all observation attributes"""
     
     def get_data(self):
         if not(isinstance(self._data,np.ndarray)):
@@ -93,12 +93,10 @@ class Observation(object):
                                 (params.readnoise/params.gain)**2) + self.mask
         if params.subtract_sky:
             self.data = im.subtract_sky(self.data,params)
-        self.fw, self.sky, self.signal = -1.0, -1.0, -1.0
+        self.fw, self.roundness, self.sky, self.signal = -1.0, -1.0, -1.0, -1.0
         if 20 < self.data_median < 0.5*params.pixel_max:
-            self.fw, self.sky, self.signal = im.compute_fwhm(self,params,
-                                                             seeing_file=
-                                                             params.loc_output+
-                                                             os.path.sep+'seeing')
+            self.fw, self.roundness, self.sky, self.signal = im.compute_fwhm(self,params,
+                                                            seeing_file=params.loc_output+os.path.sep+'seeing')
         del self.mask
         del self.inv_variance
 
@@ -118,7 +116,7 @@ class Observation(object):
 
 
 class Parameters:
-    "Container for parameters"
+    """Container for parameters"""
     def __init__(self):
         self.bdeg = 0
         self.ccd_group_size = 100
@@ -153,6 +151,7 @@ class Parameters:
         self.ref_include_file = None
         self.ref_exclude_file = None
         self.reference_min_seeing = 1.3
+        self.reference_max_roundness = 1.3
         self.reference_seeing_factor = 1.01
         self.reference_sky_factor = 1.3
         self.registration_image = None

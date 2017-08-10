@@ -111,7 +111,7 @@ def final_variable_photometry(files,params,coords=None,
     return flux, dflux
 
 
-def detect_variables(params,psf_file=None,ccoords=None,time_sigma=4.0):
+def detect_variables(params,psf_file=None,ccoords=None,time_sigma=4.0,star_coords=None):
 
     if params.use_GPU:
         from cuda_interface_functions import *
@@ -147,8 +147,13 @@ def detect_variables(params,psf_file=None,ccoords=None,time_sigma=4.0):
     nfiles = 0
     for f in all_files:
         if fnmatch.fnmatch(f,params.name_pattern):
-            filenames.append(f)
-            nfiles += 1
+            basename = os.path.basename(f)
+            dfile = params.loc_output+os.path.sep+'d_'+basename
+            nfile = params.loc_output+os.path.sep+'n_'+basename
+            ktable = params.loc_output+os.path.sep+'k_'+basename
+            if os.path.exists(dfile) and os.path.exists(nfile) and os.path.exists(ktable):
+                filenames.append(f)
+                nfiles += 1
 
     if (ccoords==None):
 
@@ -235,7 +240,11 @@ def detect_variables(params,psf_file=None,ccoords=None,time_sigma=4.0):
                 t, y, x = cen
                 if (x>dr) & (x<xs-dr) & (y>dr) & (y<ys-dr):
                     print cen
-                    good_centroids.append(cen)
+                    if star_coords is None:
+                        good_centroids.append(cen)
+                    else:
+                        if (x-star_coords[0])**2 + (y-star_coords[1])**2 < star_coords[2]**2:
+                            good_centroids.append(cen)
                     stackn_thresh = -stackn[:nstack,:,:].copy()
                     labeled_image, number_of_objects = label(stackn_thresh)
                     centroids = center_of_mass(stackn_thresh, labeled_image, \
@@ -244,7 +253,11 @@ def detect_variables(params,psf_file=None,ccoords=None,time_sigma=4.0):
                         t, y, x = cen
                         if (x>dr) & (x<xs-dr) & (y>dr) & (y<ys-dr):
                             print cen
-                            good_centroids.append(cen)
+                            if star_coords is None:
+                                good_centroids.append(cen)
+                            else:
+                                if (x-star_coords[0])**2 + (y-star_coords[1])**2 < star_coords[2]**2:
+                                    good_centroids.append(cen)
 
             print 'j',j
             if j<len(filenames):
