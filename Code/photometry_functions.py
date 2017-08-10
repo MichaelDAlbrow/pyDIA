@@ -311,7 +311,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
 
     # select PSF stars
     iraf.pstselect(image=f,photfile=fp+'temp.phot',pstfile=fp+'temp.pst',maxnpsf=40,
-                   interactive='no',verify='no',datamin=1,
+                   interactive='no',verify='no',datamin=1,fitrad=2.0,
                    datamax=params.pixel_max,epadu=params.gain,psfrad=3*np.max([g.fw,1.8]),
                    readnoise=params.readnoise,noise='poisson')
 
@@ -353,14 +353,14 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         
         # subtract PSF star neighbours
         iraf.substar(image=f,photfile=fp+'temp.nst',psfimage=fp+'temp.psf',
-                     exfile=fp+'temp.opst',
+                     exfile=fp+'temp.opst',fitrad=2.0,
                      subimage=fp+'temp.sub1',verify='no',datamin=1,
                      datamax=params.pixel_max,epadu=params.gain,
                      readnoise=params.readnoise,noise='poisson')
         
         # final PSF
         iraf.psf(image=fp+'temp.sub1',photfile=fp+'temp.phot',pstfile=fp+'temp.opst',
-                 psfimage=psf_image,psfrad=2*np.max([g.fw,1.8]),
+                 psfimage=psf_image,psfrad=5*g.fw,
                  function=params.psf_profile_type,opstfile=fp+'temp.opst2',
                  groupfile=fp+'temp.psg2',
                  interactive='no',
@@ -381,7 +381,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
                  function=params.psf_profile_type,opstfile=fp+'temp.opst',
                  groupfile=fp+'temp.psg1',
                  interactive='no',
-                 verify='no',varorder=0 ,psfrad=2*np.max([g.fw,1.8]),
+                 verify='no',varorder=0 ,psfrad=5*g.fw,
                  datamin=1,datamax=0.95*params.pixel_max,
                  scale=1.0)
 
@@ -393,7 +393,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         # subtract all stars using truncated PSF
         iraf.allstar(image=f,photfile=fp+'temp.phot',psfimage=fp+'temp.psf',
                      allstarfile=fp+'temp.als',rejfile='',
-                     subimage=fp+'temp.sub',verify='no',psfrad=np.max([g.fw,1.8]),
+                     subimage=fp+'temp.sub',verify='no',psfrad=3*g.fw,fitrad=2.0,
                      recenter='yes',groupsky='yes',fitsky='yes',sannulus=7,wsannulus=10,
                      datamin=1,datamax=params.pixel_max,
                      epadu=params.gain,readnoise=params.readnoise,
@@ -407,7 +407,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         
             # locate new stars
             iraf.daofind(image=fp+'temp.sub',output=fp+'temp.stars1',interactive='no',verify='no',
-                         threshold=3,sigma=params.star_detect_sigma,fwhmpsf=g.fw,
+                         threshold=3,sigma=params.star_detect_sigma,fwhmpsf=3*g.fw,
                          datamin=1,datamax=params.pixel_max,
                          epadu=params.gain,readnoise=params.readnoise,
                          noise='poisson')
@@ -429,14 +429,14 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
                  function=params.psf_profile_type,opstfile=fp+'temp.opst2',
                  groupfile=fp+'temp.psg3',
                  interactive='no',
-                 verify='no',varorder=0 ,psfrad=2*np.max([g.fw,1.8]),
+                 verify='no',varorder=0 ,psfrad=5*g.fw,
                  datamin=-10000,datamax=0.95*params.pixel_max,
                  scale=1.0)
 
         # magnitudes for PSF group stars
         iraf.nstar(image=f,groupfile=fp+'temp.psg3',psfimage=fp+'temp.psf2',
                    nstarfile=fp+'temp.nst',
-                   rejfile='',verify='no',psfrad=2*np.max([g.fw,1.8]),
+                   rejfile='',verify='no',psfrad=5*g.fw,fitrad=2.0,
                    recenter='no',
                    groupsky='yes',fitsky='yes',sannulus=7,wsannulus=10,
                    datamin=1,datamax=params.pixel_max,
@@ -444,7 +444,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
 
         # subtract PSF star neighbours
         iraf.substar(image=f,photfile=fp+'temp.nst',psfimage=fp+'temp.psf2',
-                     exfile=fp+'temp.opst2',
+                     exfile=fp+'temp.opst2',fitrad=2.0,
                      subimage=fp+'temp.sub1',verify='no',datamin=1,
                      datamax=params.pixel_max,epadu=params.gain,
                      readnoise=params.readnoise,noise='poisson')
@@ -452,7 +452,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         # final PSF
         iraf.psf(image=fp+'temp.sub1',photfile=fp+'temp.phot2',
                  pstfile=fp+'temp.opst2',
-                 psfimage=psf_image,psfrad=2*np.max([g.fw,1.8]),
+                 psfimage=psf_image,psfrad=5*g.fw,
                  function=params.psf_profile_type,opstfile=fp+'temp.opst3',
                  groupfile=fp+'temp.psg5',
                  interactive='no',
@@ -465,9 +465,9 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         
         iraf.allstar(image=g.fullname,photfile=fp+'temp.phot2',psfimage=psf_image,
                      allstarfile=fp+'temp.als2',rejfile='',
-                     subimage=fp+'temp.sub2',verify='no',psfrad=2*np.max([g.fw,1.8]),
+                     subimage=fp+'temp.sub2',verify='no',psfrad=5*g.fw,
                      recenter=als_recenter,groupsky='yes',fitsky='yes',sannulus=7,
-                     wsannulus=10,
+                     wsannulus=10,fitrad=2.0,
                      datamin=params.pixel_min,datamax=params.pixel_max,
                      epadu=params.gain,readnoise=params.readnoise,
                      noise='poisson')

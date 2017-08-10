@@ -25,8 +25,9 @@ def read_fits_file(file,slice=None):
 def write_image(image,file):
     hdu = fits.PrimaryHDU(image.astype(np.float32))
     try:
-        hdu.writeto(file)
+        hdu.writeto(file,overwrite=True)
     except IOError:
+        print 'Warning - io_functions.write_image: could not write file',file
         pass
 
 def write_kernel_table(file,kernel_index,extended_basis,coeffs,params):

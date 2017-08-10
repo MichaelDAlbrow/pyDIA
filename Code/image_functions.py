@@ -245,16 +245,20 @@ def undo_photometric_scale(d,c,pdeg,size=None,position=(0,0)):
 
 
 def compute_fwhm(f,params,width=20,seeing_file='seeing'):
+
     from scipy.signal import fftconvolve
     from scipy.interpolate import interp1d
+    from astropy.modeling import models, fitting
+
     fw = None
     if os.path.exists(seeing_file):
         for line in open(seeing_file,'r'):
             sline = line.split()
             if sline[0] == f.name:
-                fw = float(sline[1])
-                bgnd = float(sline[2])
-                signal = float(sline[3])
+                g_width = float(sline[1])
+                g_roundness = float(sline[2])
+                bgnd = float(sline[3])
+                signal = float(sline[4])
                 break
     if not(fw):
         if isinstance(params.fwhm_section,np.ndarray):
@@ -271,25 +275,39 @@ def compute_fwhm(f,params,width=20,seeing_file='seeing'):
         image -= bgnd
         signal = image.sum()/image.size
         c = fftconvolve(image, image[::-1, ::-1])
-        x1 = int(round(c.shape[0]*0.5))
-        x2 = int(round(c.shape[0]*0.5+width))
-        y1 = int(round(c.shape[1]*0.5))
-        xx = np.arange(x2-x1+1)
-        xnew = np.linspace(0,x2-x1,1000)
-        fint = interp1d(xx,c[x1:x2+1,y1]-np.min(c[x1:x2+1,y1]),kind='cubic')
-        ynew = fint(xnew)
-        ymax = max(ynew)
-        for i,y in enumerate(ynew):
-            if y<ymax/2:
-                fw = i*(xnew[1]-xnew[0])
-                break
-        if not(fw):
-            fw = 6.0
+        xcen = c.shape[0]/2
+        ycen = c.shape[1]/2
+        c_small = c[xcen-20:xcen+20,ycen-20:ycen+20]
+        xsize, ysize = c_small.shape
+        xcen = c_small.shape[0]/2
+        ycen = c_small.shape[1]/2
+        y, x = np.mgrid[:xsize, :ysize]
+        g_init = models.Gaussian2D(amplitude=c_small[xcen,ycen],x_stddev=1,y_stddev=1,x_mean=xcen,y_mean=ycen)
+        fit_g = fitting.LevMarLSQFitter()
+        g=fit_g(g_init,x,y,c_small)
+        gx =  g.x_stddev.value
+        gy =  g.y_stddev.value
+        g_width = np.mean((gx,gy))/np.sqrt(2.0)
+        g_roundness = np.max((gx,gy))/np.min((gx,gy))
+        #x1 = int(round(c.shape[0]*0.5))
+        #x2 = int(round(c.shape[0]*0.5+width))
+        #y1 = int(round(c.shape[1]*0.5))
+        #xx = np.arange(x2-x1+1)
+        #xnew = np.linspace(0,x2-x1,1000)
+        #fint = interp1d(xx,c[x1:x2+1,y1]-np.min(c[x1:x2+1,y1]),kind='cubic')
+        #ynew = fint(xnew)
+        #ymax = max(ynew)
+        #for i,y in enumerate(ynew):
+        #    if y<ymax/2:
+        #        fw = i*(xnew[1]-xnew[0])
+        #        break
+        #if not(fw):
+        #    fw = 6.0
         p = open(seeing_file,'a')
-        p.write(f.name+'  '+str(fw)+'  '+str(bgnd)+'  '+str(signal)+'\n')
+        p.write(f.name+'  '+str(g_width)+'  '+str(g_roundness)+'  '+str(bgnd)+'  '+str(signal)+'\n')
         p.close()
         
-    return fw, bgnd, signal
+    return g_width, g_roundness, bgnd, signal
 
 
 def subtract_sky(image,params):
