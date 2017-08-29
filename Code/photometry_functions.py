@@ -168,12 +168,12 @@ def choose_stamps(f,params):
     else:
         print 'Warning: using stamps close to edge of detector'
         gstars = stars
-    md = params.stamp_half_width
+    md = int(params.stamp_half_width)
     i = 0
     while (n_good < params.nstamps) & (i<gstars.shape[0]):
         if ((gstars[i,0] > md) & (gstars[i,0] < xmax-md) & (gstars[i,1] > md) &
             (gstars[i,1] < ymax-md)):
-            mstamp = mask[gstars[i,0]-md:gstars[i,0]+md,gstars[i,1]-md:gstars[i,1]+md]
+            mstamp = mask[int(gstars[i,0]+0.5)-md:int(gstars[i,0]+0.5)+md,int(gstars[i,1]+0.5)-md:int(gstars[i,1]+0.5)+md]
             q = np.where(mstamp<1)
             if len(q[0]) == 0:
                 snum[n_good] = i
