@@ -7,7 +7,7 @@ from image_functions import convolve_undersample
 import os
 import ctypes
 from numpy.ctypeslib import ndpointer
-dllabspath = os.path.dirname(os.path.abspath(__file__)) + os.path.sep + 'c_functions.so'
+dllabspath = os.path.dirname(os.path.abspath(__file__)) + os.path.sep + 'c_functions_sp.so'
 lib = ctypes.cdll.LoadLibrary(dllabspath)
 
 cu_convolve_image_psf = lib.cu_convolve_image_psf
