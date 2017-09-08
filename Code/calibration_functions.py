@@ -25,7 +25,7 @@ def locate_intercept(x,y,x_range):
     return a, ix
 
 
-def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0,3)):
+def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sky_flux_cutoff_percent=0.1):
 
     magfile = os.path.join(dir,'ref.mags')
     fluxfile = os.path.join(dir,'ref.flux')
@@ -34,6 +34,12 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0,3)):
     flux = np.loadtxt(fluxfile)
 
     p = np.where((mag[:,3] > 0) & (flux[:,0] > 0))[0]
+
+    sky_max_flux = np.percentile(flux[p,0],sky_flux_cutoff_percent)
+    q = np.where(flux[p,0] < sky_max_flux)[0]
+    sky_flux = 0.9*np.mean(flux[p[q],0])
+    flux[:,0] -= sky_flux
+
     x = np.linspace(np.min(mag[p,3]),np.max(mag[p,3]),3)
     offset, stars = locate_intercept(mag[p,3],25-2.5*np.log10(flux[p,0]),magnitude_range_fraction)
 

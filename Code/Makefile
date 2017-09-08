@@ -19,14 +19,16 @@ DIA_CPU.py	: DIA_common.py DIA_CPU_header.py
 
 c_functions_sp.so	: c_functions_sp.c
 	gcc -fPIC -shared -o c_functions_sp.so c_functions_sp.c
+	rm -f c_interface_functions.py
 	ln -s c_interface_functions_sp.py c_interface_functions.py
 
 c_functions_dp.so	: c_functions_dp.c
 	gcc -fPIC -shared -o c_functions_dp.so c_functions_dp.c
+	rm -f c_interface_functions.py
 	ln -s c_interface_functions_dp.py c_interface_functions.py
 
 DIA_GPU.py	: DIA_common.py DIA_GPU_header.py
 	cat DIA_GPU_header.py DIA_common.py > DIA_GPU.py
 
 clean	:
-	rm DIA_CPU.py DIA_GPU.py cuda_functions.py c_functions_sp.so c_functions_dp.so *.pyc
+	rm DIA_CPU.py DIA_GPU.py cuda_functions.py c_functions_sp.so c_functions_dp.so c_interface_functions.py *.pyc

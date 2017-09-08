@@ -183,7 +183,7 @@ def compute_model_cuda(image_size,texref,c,kernelIndex,extendedBasis,params):
 def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
                      extendedBasis,kernelRadius,params,
                      star_group_boundaries=None,
-                     detector_mean_positions_x=None,detector_mean_positions_y=None):
+                     detector_mean_positions_x=None,detector_mean_positions_y=None,subtract_stars=False):
     
     from astropy.io import fits
     # Read the PSF
@@ -228,7 +228,6 @@ def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
     # Each thread is one column of the PSF, but 32 threads per warp
     nstars = positions.shape[0]
     gridDim = (int(nstars),1,1)
-    nthreads = ((int(psf_size + 2*kernelRadius)-1)/32 + 1)*32
     blockDim = (16,16,1)
 
     k0 = kernelIndex[:,0].astype(np.int32).copy()

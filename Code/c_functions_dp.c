@@ -536,7 +536,7 @@ void cu_photom(int profile_type,
 	       float *flux, float *dflux, long gridDimx, int blockDimx, 
 	       int blockDimy,
 	       float *tex0, float *tex1, int *group_boundaries, 
-	       float *group_positions_x, float *group_positions_y, int ngroups) {
+	       float *group_positions_x, float *group_positions_y, int ngroups, int subtract) {
 
   int     id, txa, tyb, txag, tybg;
   int     np, ns, i, j, ip, jp, ic, ki, a, b;
@@ -792,6 +792,18 @@ void cu_photom(int profile_type,
       // printf("flux for star %d: %f +/- %f\n",blockIdx,fl,sqrt(fsum3*fsum3/fsum2));
       flux[blockIdx] = fl;
       dflux[blockIdx] = sqrt(fsum3*fsum3/fsum2);
+
+      // Subtract each model star from the image as we go
+      if (subtract == 1) {
+        for (idx = 0; idx < 16; idx++) {
+          for (idy = 0; idy < 16; idy++) {
+            id = idx + idy * blockDimx;
+            ix = (int)floor(xpos + 0.5) + idx - 8.0;
+            jx = (int)floor(ypos + 0.5) + idy - 8.0;
+            tex0[ix + nx * jx] -= fl * mpsf[id];
+          }
+        }
+      }
 
     }
     i_group_previous = group_boundaries[i_group];

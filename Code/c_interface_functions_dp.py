@@ -274,7 +274,7 @@ def compute_model_cuda(image_size,(R,RB),c,kernelIndex,extendedBasis,params):
 def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
                      extendedBasis,kernelRadius,params,
                      star_group_boundaries,
-                     detector_mean_positions_x,detector_mean_positions_y):
+                     detector_mean_positions_x,detector_mean_positions_y,subtract_stars=False):
     
     from astropy.io import fits
     # Read the PSF
@@ -329,6 +329,11 @@ def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
     flux = np.zeros(nstars,dtype=np.float32)
     dflux = np.zeros(nstars,dtype=np.float32)
 
+ 
+    subtract_flag = 0
+    if subtract_stars:
+      subtract_flag = 1
+
     print 'nstars', nstars
     print 'flux', flux.shape
     print 'dflux', dflux.shape
@@ -341,7 +346,7 @@ def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
               posx, posy, c, flux, dflux, long(nstars), 16, 16, np.float32(diff),
               np.float32(inv_variance),np.int32(star_group_boundaries),
               np.float32(detector_mean_positions_x),
-              np.float32(detector_mean_positions_y),star_group_boundaries.shape[0])
+              np.float32(detector_mean_positions_y),star_group_boundaries.shape[0],subtract_flag)
     
     return flux, dflux
     
