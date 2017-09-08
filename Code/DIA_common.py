@@ -43,7 +43,7 @@ from photometry_functions import *
 def difference_image(ref,target,params,stamp_positions=None,
 					 psf_image=None,star_positions=None,
 					 star_group_boundaries=None,detector_mean_positions_x=None,
-					 detector_mean_positions_y=None):
+					 detector_mean_positions_y=None,subtract_during_photometry=False):
 
 	from scipy.linalg import lu_solve, lu_factor, LinAlgError
 
@@ -182,7 +182,7 @@ def difference_image(ref,target,params,stamp_positions=None,
 										   kernelRadius,params,
 										   star_group_boundaries,
 										   detector_mean_positions_x,
-										   detector_mean_positions_y)
+										   detector_mean_positions_y,subtract_during_photometry)
 		print 'Photometry completed',time.time()-start
 
 	#
@@ -585,6 +585,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 	# Detect stars and compute the PSF if we are doing photometry
 	#
 	star_positions = None
+	sky = 0.0
 	if params.do_photometry:
 		star_file = params.loc_output+os.path.sep+'star_positions'
 		psf_file = params.loc_output+os.path.sep+'psf.fits'
@@ -595,7 +596,8 @@ def imsub_all_fits(params,reference='ref.fits'):
 			star_positions = np.genfromtxt(star_file)
 		else:
 			np.savetxt(star_file,star_positions)
-			
+
+	print 'sky =', sky
 
 	#
 	# If we have pre-determined star positions
@@ -640,7 +642,8 @@ def imsub_all_fits(params,reference='ref.fits'):
 									  star_positions=star_positions,
 									  star_group_boundaries=star_group_boundaries,
 									  detector_mean_positions_x=detector_mean_positions_x,
-									  detector_mean_positions_y=detector_mean_positions_y)
+									  detector_mean_positions_y=detector_mean_positions_y,
+									  subtract_during_photometry=not(params.use_GPU))
 			if isinstance(result.flux,np.ndarray):
 				if not(params.use_GPU):
 					print 'ungrouping fluxes'
@@ -653,19 +656,21 @@ def imsub_all_fits(params,reference='ref.fits'):
 	# Process images
 	#
 
-	if not(params.use_GPU) and (params.n_parallel > 1):
+	if params.make_difference_images:
 
-		pool = Pool(params.n_parallel)
-		pool.map(process_image_helper, itertools.izip(files, itertools.repeat(
-				(ref,params,stamp_positions,star_positions,star_group_boundaries,
-				 star_unsort_index,detector_mean_positions_x,detector_mean_positions_y))))
+		if not(params.use_GPU) and (params.n_parallel > 1):
 
-	else:
+			pool = Pool(params.n_parallel)
+			pool.map(process_image_helper, itertools.izip(files, itertools.repeat(
+					(ref,params,stamp_positions,star_positions,star_group_boundaries,
+					 star_unsort_index,detector_mean_positions_x,detector_mean_positions_y))))
 
-		for f in files:
-			process_image(f,(ref,params,stamp_positions,star_positions,
-							 star_group_boundaries,star_unsort_index,
-							 detector_mean_positions_x,detector_mean_positions_y))
+		else:
+
+			for f in files:
+				process_image(f,(ref,params,stamp_positions,star_positions,
+								 star_group_boundaries,star_unsort_index,
+								 detector_mean_positions_x,detector_mean_positions_y))
 
 	return files
 
@@ -750,7 +755,7 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 										   params,
 										   star_group_boundaries,
 										   detector_mean_positions_x,
-										   detector_mean_positions_y)
+										   detector_mean_positions_y, sky=sky)
 
 	if isinstance(ref.flux,np.ndarray):
 		if not(params.use_GPU):

@@ -135,6 +135,7 @@ class Parameters:
         self.kernel_minimum_radius = 5.0
         self.loc_data = '.'
         self.loc_output = '.'
+        self.make_difference_images = True
         self.mask_cluster = False
         self.min_ref_images = 3
         self.n_parallel = 1
