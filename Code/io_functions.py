@@ -8,7 +8,7 @@ def get_date(file,key='JD'):
     try:
         date = hdulist[0].header[key]
     except KeyError:
-        print 'Error: No date found for file',file
+        print 'Error: No date found for file',file,'using FITS header keyword',key
         date = 2459999.0
     return date
 

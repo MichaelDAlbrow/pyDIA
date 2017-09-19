@@ -1,7 +1,7 @@
 import os
 import numpy as np
-import image_functions as im
-import io_functions as io
+import image_functions as IM
+import io_functions as IO
 
 #
 # Fundamental data structures
@@ -15,7 +15,7 @@ class Observation(object):
     
     def get_data(self):
         if not(isinstance(self._data,np.ndarray)):
-            self._data, _ = io.read_fits_file(self.fullname)
+            self._data, _ = IO.read_fits_file(self.fullname)
             self.data_median = np.median(self._data)
             self.shape = self._data.shape
         return self._data
@@ -32,13 +32,13 @@ class Observation(object):
     def get_image(self):
         if not(isinstance(self._image,np.ndarray)):
             image_name = os.path.join(self.output_dir,'r_'+self.name)
-            self._image, _ = io.read_fits_file(image_name)
+            self._image, _ = IO.read_fits_file(image_name)
         return self._image
 
     def set_image(self,value):
         self._image = value
         image_name = os.path.join(self.output_dir,'r_'+self.name)
-        io.write_image(self._image,image_name)
+        IO.write_image(self._image,image_name)
 
     def del_image(self):
         self._image = None
@@ -49,13 +49,13 @@ class Observation(object):
     def get_mask(self):
         if not(isinstance(self._mask,np.ndarray)):
             mask_name = os.path.join(self.output_dir,'sm_'+self.name)
-            self._mask, _ = io.read_fits_file(mask_name)
+            self._mask, _ = IO.read_fits_file(mask_name)
         return self._mask
 
     def set_mask(self,value):
         self._mask = value
         mask_name = os.path.join(self.output_dir,'sm_'+self.name)
-        io.write_image(self._mask,mask_name)
+        IO.write_image(self._mask,mask_name)
 
     def del_mask(self):
         self._mask = None
@@ -66,13 +66,13 @@ class Observation(object):
     def get_inv_variance(self):
         if not(isinstance(self._inv_variance,np.ndarray)):
             inv_variance_name = os.path.join(self.output_dir,'sm_'+self.name)
-            self._inv_variance, _ = io.read_fits_file(inv_variance_name)
+            self._inv_variance, _ = IO.read_fits_file(inv_variance_name)
         return self._inv_variance
 
     def set_inv_variance(self,value):
         self._inv_variance = value
         inv_variance_name = os.path.join(self.output_dir,'iv_'+self.name)
-        io.write_image(self._inv_variance,inv_variance_name)
+        IO.write_image(self._inv_variance,inv_variance_name)
 
     def del_inv_variance(self):
         self._inv_variance = None
@@ -87,29 +87,29 @@ class Observation(object):
         self._data = None
         self._image = None
         self._mask = None
-        self.mask = im.compute_saturated_pixel_mask(self.data,5,params) * \
-                    im.compute_bleed_mask(self.data,3,params)
+        self.mask = IM.compute_saturated_pixel_mask(self.data,5,params) * \
+                    IM.compute_bleed_mask(self.data,3,params)
         self.inv_variance = 1.0/(self.data/params.gain +
                                 (params.readnoise/params.gain)**2) + self.mask
         if params.subtract_sky:
-            self.data = im.subtract_sky(self.data,params)
+            self.data = IM.subtract_sky(self.data,params)
         self.fw, self.roundness, self.sky, self.signal = -1.0, -1.0, -1.0, -1.0
         if 20 < self.data_median < 0.5*params.pixel_max:
-            self.fw, self.roundness, self.sky, self.signal = im.compute_fwhm(self,params,
+            self.fw, self.roundness, self.sky, self.signal = IM.compute_fwhm(self,params,
                                                             seeing_file=params.loc_output+os.path.sep+'seeing')
         del self.mask
         del self.inv_variance
 
     def register(self,reg,params):
         print self.name
-        self._image, self._mask, self._inv_variance = im.register(reg,self,
+        self._image, self._mask, self._inv_variance = IM.register(reg,self,
                                                                   params)
         rf = os.path.join(self.output_dir,'r_'+self.name)
-        io.write_image(self._image,rf)
+        IO.write_image(self._image,rf)
         rf = os.path.join(self.output_dir,'sm_'+self.name)
-        io.write_image(self._mask,rf)
+        IO.write_image(self._mask,rf)
         rf = os.path.join(self.output_dir,'iv_'+self.name)
-        io.write_image(self._inv_variance,rf)
+        IO.write_image(self._inv_variance,rf)
         del self.mask
         del self.data
         del self.inv_variance

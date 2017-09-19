@@ -35,9 +35,11 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
 
     p = np.where((mag[:,3] > 0) & (flux[:,0] > 0))[0]
 
-    sky_max_flux = np.percentile(flux[p,0],sky_flux_cutoff_percent)
-    q = np.where(flux[p,0] < sky_max_flux)[0]
-    sky_flux = 0.9*np.mean(flux[p[q],0])
+    #sky_max_flux = np.percentile(flux[p,0],sky_flux_cutoff_percent)
+    #q = np.where(flux[p,0] < sky_max_flux)[0]
+    #sky_flux = 0.9*np.mean(flux[p[q],0])
+    q = np.where(mag[p,3] > np.percentile(mag[p,3],99.9))[0]
+    sky_flux = 0.95*np.median(flux[p[q],0])
     flux[:,0] -= sky_flux
 
     x = np.linspace(np.min(mag[p,3]),np.max(mag[p,3]),3)
@@ -123,8 +125,10 @@ def makeCMD(dirI,dirV,bandwidth = 0.25):
 
     print xmin, xmax, ymin, ymax
     
-    np.savetxt(dirI+'-'+dirV+'-CMDdata',np.vstack((vm[p,3],im[p,3],vm[p,4],im[p,4])).T,
-               fmt='%7.4f   %7.4f   %7.4f   %7.4f')
+    np.savetxt(dirI+'-'+dirV+'-CMDdata',
+                np.vstack((im[p,0],im[p,1],im[p,2],vm[p,3],vm[p,4],im[p,3],im[p,4])).T,
+                fmt='%6d %9.3f %9.3f %7.4f   %7.4f   %7.4f   %7.4f',
+                header='ID  xpos  ypos  V  V_err  I  I_err')
     
     plt.figure()
     samples = np.vstack([vm[p,3]-im[p,3],im[p,3]]).T
