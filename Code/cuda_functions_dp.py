@@ -619,8 +619,8 @@ __global__ void cu_photom(int profile_type,
    psf_xpos = psf_parameters[5];
    psf_rad = psf_parameters[6];
    gain = psf_parameters[7];
-   if (psf_rad > 2.5) {
-     psf_rad = 2.5;
+   if (psf_rad > 7.0) {
+     psf_rad = 7.0;
    }
    psf_rad2 = psf_rad*psf_rad;
 
@@ -870,7 +870,7 @@ __global__ void cu_photom(int profile_type,
 
    //
    // Normalise mapped PSF
-   //  (No - the convolved PSF contain the phot scale)
+   //  (No - the convolved PSF contains the phot scale)
 /*
    cpsf[id] = mpsf[id];
    __syncthreads();
@@ -929,15 +929,14 @@ __global__ void cu_photom(int profile_type,
      }
      */
      
-     if (pow(threadIdx.x-7.5,2)+pow(threadIdx.y-7.5,2) < psf_rad2) {
+     if (pow(threadIdx.x-8.0,2)+pow(threadIdx.y-8.0,2) < psf_rad2) {
 
         ix = (int)floor(xpos+0.5)+threadIdx.x-8.0;
         jx = (int)floor(ypos+0.5)+threadIdx.y-8.0;
 
-        if (j>0) inv_var = 1.0 / ((star_sky[blockIdx.x] + fl * mpsf[id]) / gain + RON*RON);
-         //inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
+        inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
 
-        fsum1[id] = mpsf[id]*(tex2DLayered(tex,ix,jx,0)-star_sky[blockIdx.x])*inv_var;
+        fsum1[id] = mpsf[id]*tex2DLayered(tex,ix,jx,0)*inv_var;
         fsum2[id] = mpsf[id]*mpsf[id]*inv_var;
         fsum3[id] = mpsf[id]; 
 
