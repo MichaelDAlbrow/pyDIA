@@ -169,7 +169,7 @@ class Parameters:
         self.star_file_number_match = 10000
         self.star_file_transform_degree = 2
         self.star_reference_image = None
-        self.subtract_sky = True
+        self.subtract_sky = False
         self.use_fft_kernel_pixels = False
         self.use_GPU = True
         self.use_stamps = False

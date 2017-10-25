@@ -467,7 +467,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
                      allstarfile=fp+'temp.als2',rejfile='',
                      subimage=fp+'temp.sub2',verify='no',psfrad=5*g.fw,
                      recenter=als_recenter,groupsky='yes',fitsky='yes',sannulus=7,
-                     wsannulus=10,fitrad=2.0,
+                     wsannulus=10,fitrad=3.0,
                      datamin=params.pixel_min,datamax=params.pixel_max,
                      epadu=params.gain,readnoise=params.readnoise,
                      noise='poisson')
@@ -492,14 +492,14 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
             iraf.prenumber(infile=fp+'temp.als3')
             
         s = iraf.pdump(infiles=fp+'temp.als3',Stdout=1,
-                       fields='ID,XCENTER,YCENTER,MAG,MERR,SHARPNESS,CHI',expr='yes')
+                       fields='ID,XCENTER,YCENTER,MAG,MERR,MSKY,SHARPNESS,CHI',expr='yes')
         sf = [k.replace('INDEF','-1') for k in s]
-        stars = np.zeros([len(sf),3])
+        stars = np.zeros([len(sf),5])
         for i, line in enumerate(sf):
-            stars[i,:] = np.array(map(float,sf[i].split()[1:4]))
+            stars[i,:] = np.array(map(float,sf[i].split()[1:6]))
 
         s = iraf.pdump(infiles=fp+'temp.als3',Stdout=1,
-                       fields='ID,XCENTER,YCENTER,MAG,MERR,SHARPNESS,CHI',expr='yes')
+                       fields='ID,XCENTER,YCENTER,MAG,MERR,SHARPNESS,CHI,MSKY',expr='yes')
         sf = [k.replace('INDEF','-1') for k in s]
         with open(fp+'ref.mags','w') as fid:
             for s in sf:

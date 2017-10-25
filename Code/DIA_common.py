@@ -38,12 +38,12 @@ import io_functions as IO
 import image_functions as IM
 import photometry_functions as PH
 
-
+import c_interface_functions as CIF
 
 def difference_image(ref,target,params,stamp_positions=None,
 					 psf_image=None,star_positions=None,
 					 star_group_boundaries=None,detector_mean_positions_x=None,
-					 detector_mean_positions_y=None,subtract_during_photometry=False):
+					 detector_mean_positions_y=None,star_sky=None):
 
 	from scipy.linalg import lu_solve, lu_factor, LinAlgError
 
@@ -170,18 +170,24 @@ def difference_image(ref,target,params,stamp_positions=None,
 	#
 	g.flux = None
 	if params.do_photometry and psf_image:
-		if ref.name == target.name:
-			phot_target = ref.image
-		else:
-			phot_target = difference
 		print 'star_positions', star_positions.shape
 		print 'star_group_boundaries', star_group_boundaries
-		g.flux, g.dflux = CI.photom_all_stars(phot_target,target.inv_variance,star_positions,
-												psf_image,c,kernelIndex,extendedBasis,
-												kernelRadius,params,
-												star_group_boundaries,
-												detector_mean_positions_x,
-												detector_mean_positions_y,subtract_during_photometry)
+		if ref.name == target.name:
+			sky_image, _ = IO.read_fits_file(params.loc_output+os.path.sep+'temp.sub2.fits')
+			phot_target = ref.image - sky_image
+			g.flux, g.dflux = CIF.photom_all_stars_simultaneous(phot_target,target.inv_variance,star_positions,
+													psf_image,c,kernelIndex,extendedBasis,kernelRadius,params,
+                                 					star_group_boundaries,
+                                  					detector_mean_positions_x,detector_mean_positions_y)
+ 		else:
+			phot_target = difference
+			g.flux, g.dflux = CI.photom_all_stars(phot_target,target.inv_variance,star_positions,
+													psf_image,c,kernelIndex,extendedBasis,
+													kernelRadius,params,
+													star_group_boundaries,
+													detector_mean_positions_x,
+													detector_mean_positions_y)
+
 		print 'Photometry completed',time.time()-start
 
 	#
@@ -594,8 +600,10 @@ def imsub_all_fits(params,reference='ref.fits'):
 		if not(os.path.exists(psf_file)) or not(os.path.exists(star_file)):
 			stars = PH.compute_psf_image(params,ref,psf_image=psf_file)
 			star_positions = stars[:,0:2]
+			star_sky = stars[:,4]
 		if os.path.exists(star_file):
 			star_positions = np.genfromtxt(star_file)
+			star_sky = star_positons[:,0]*0.0;
 		else:
 			np.savetxt(star_file,star_positions)
 
@@ -604,16 +612,16 @@ def imsub_all_fits(params,reference='ref.fits'):
 	#
 	# If we have pre-determined star positions
 	#
-	if params.star_file:
-		stars = np.genfromtxt(params.star_file)
-		star_positions = stars[:,1:3]
-		if params.star_reference_image:
-			star_ref, h = IO.read_fits_file(params.star_reference_image)
-			dx, dy = IM.positional_shift(ref.image,star_ref)
-			print 'position shift =',dx,dy
-			star_positions[:,0] += dx
-			star_positions[:,1] += dy
-		np.savetxt(star_file,star_positions)
+	#if params.star_file:
+	#	stars = np.genfromtxt(params.star_file)
+	#	star_positions = stars[:,1:3]
+	#	if params.star_reference_image:
+	#		star_ref, h = IO.read_fits_file(params.star_reference_image)
+	#		dy, dx = IM.positional_shift(ref.image,star_ref)
+	#		print 'position shift =',dx,dy
+	#		star_positions[:,0] += dx
+	#		star_positions[:,1] += dy
+	#	np.savetxt(star_file,star_positions)
 
 	#
 	# If we are using a CPU, group the stars by location
@@ -626,11 +634,11 @@ def imsub_all_fits(params,reference='ref.fits'):
 		detector_mean_positions_x = None
 		detector_mean_positions_y = None
 		star_unsort_index = None
-		if not(params.use_GPU):
-			star_sort_index,star_group_boundaries,detector_mean_positions_x,detector_mean_positions_y = \
+		star_sort_index,star_group_boundaries,detector_mean_positions_x,detector_mean_positions_y = \
 							PH.group_stars_ccd(params,star_positions,params.loc_output+os.path.sep+reference)
-			star_positions = star_positions[star_sort_index]
-			star_unsort_index = np.argsort(star_sort_index)
+		star_positions = star_positions[star_sort_index]
+		star_sky = star_sky[star_sort_index]
+		star_unsort_index = np.argsort(star_sort_index)
 			
 
 	#
@@ -646,12 +654,11 @@ def imsub_all_fits(params,reference='ref.fits'):
 									  star_group_boundaries=star_group_boundaries,
 									  detector_mean_positions_x=detector_mean_positions_x,
 									  detector_mean_positions_y=detector_mean_positions_y,
-									  subtract_during_photometry=not(params.use_GPU))
+									  star_sky=star_sky)
 			if isinstance(result.flux,np.ndarray):
-				if not(params.use_GPU):
-					print 'ungrouping fluxes'
-					result.flux = result.flux[star_unsort_index].copy()
-					result.dflux = result.dflux[star_unsort_index].copy()
+				print 'ungrouping fluxes'
+				result.flux = result.flux[star_unsort_index].copy()
+				result.dflux = result.dflux[star_unsort_index].copy()
 				np.savetxt(ref_flux_file,
 						   np.vstack((result.flux,result.dflux)).T)
 

@@ -570,7 +570,7 @@ __global__ void cu_photom(int profile_type,
                           float *psf_0, float *psf_xd, float *psf_yd,
                           float *posx,
                           float *posy, float *coeff, 
-                          float *flux, float *dflux) {
+                          float *flux, float *dflux, float *star_sky) {
 
    int     id, txa, tyb, txag, tybg;
    int     np, ns, i, j, ip, jp, ic, ki, a, b;
@@ -580,8 +580,8 @@ __global__ void cu_photom(int profile_type,
    float   psf_height, psf_sigma_x, psf_sigma_y, psf_sigma_xy, psf_xpos, psf_ypos;
    float   psf_rad, psf_rad2, gain, fl, inv_var, px, py;
    float   sx2, sy2, sxy2, sx2msy2, sx2psy2; 
-   float  subx, suby, psf_norm, bgnd;
-   float  pi=3.14159265,fwtosig=0.8493218;
+   float  subx, suby, psf_norm, bgnd, dr2;
+   float  pi=3.14159265,fwtosig=0.8493218, RON=5.0;
 
    __shared__ float psf_sum[256];
    __shared__ float cpsf[256];
@@ -618,8 +618,8 @@ __global__ void cu_photom(int profile_type,
    psf_xpos = psf_parameters[5];
    psf_rad = psf_parameters[6];
    gain = psf_parameters[7];
-   if (psf_rad > 6.0) {
-     psf_rad = 6.0;
+   if (psf_rad > 5.0) {
+     psf_rad = 5.0;
    }
    psf_rad2 = psf_rad*psf_rad;
 
@@ -933,17 +933,21 @@ __global__ void cu_photom(int profile_type,
         ix = (int)floorf(xpos+0.5)+threadIdx.x-8.0;
         jx = (int)floorf(ypos+0.5)+threadIdx.y-8.0;
 
-        inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
+        if (j>0) inv_var = 1.0 / ((star_sky[blockIdx.x] + fl * mpsf[id]) / gain + RON*RON);
+        dr2 = (xpos-ix)*(xpos-ix) + (ypos-jx)*(ypos-jx);
+        inv_var *= max(5.0 / (5.0 + 1.0 / (psf_rad2/dr2 - 1.0) ),0.0);
 
-        fsum1[id] = mpsf[id]*tex2DLayered(tex,ix,jx,0)*inv_var;
+        //inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
+
+        fsum1[id] = mpsf[id]*(tex2DLayered(tex,ix,jx,0)-star_sky[blockIdx.x])*inv_var;
         fsum2[id] = mpsf[id]*mpsf[id]*inv_var;
         fsum3[id] = mpsf[id]; 
 
-        /*
+        
         if ((blockIdx.x==14)){
-           printf("ix jx mpsf im: %03d %03d %6.5f %12.2f\\n",ix,jx,mpsf[id],tex2DLayered(tex,ix,jx,0));
+           printf("ix jx xpos ypos dr2 mpsf inv_var im: %03d %03d %8.3f %8.3f %6.3f %6.5f %g %g\\n",ix,jx,xpos,ypos,dr2, mpsf[id],inv_var, tex2DLayered(tex,ix,jx,0));
         }
-        */
+        
 
 
      }
