@@ -35,10 +35,13 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
 
     p = np.where((mag[:,3] > 0) & (flux[:,0] > 0))[0]
 
-    sky_max_flux = np.percentile(flux[p,0],sky_flux_cutoff_percent)
-    q = np.where(flux[p,0] < sky_max_flux)[0]
-    sky_flux = 0.9*np.mean(flux[p[q],0])
-    flux[:,0] -= sky_flux
+    #sky_max_flux = np.percentile(flux[p,0],sky_flux_cutoff_percent)
+    #q = np.where(flux[p,0] < sky_max_flux)[0]
+    #sky_flux = 0.9*np.mean(flux[p[q],0])
+    
+    #q = np.where(mag[p,3] > np.percentile(mag[p,3],99.9))[0]
+    #sky_flux = 0.95*np.median(flux[p[q],0])
+    #flux[:,0] -= sky_flux
 
     x = np.linspace(np.min(mag[p,3]),np.max(mag[p,3]),3)
     offset, stars = locate_intercept(mag[p,3],25-2.5*np.log10(flux[p,0]),magnitude_range_fraction)
@@ -53,42 +56,51 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     bandwidth = 0.25
 
     fig = plt.figure()
-    ax = fig.add_subplot(223, position=rect_scatter)
-    ax.scatter(mag[p,3],25-2.5*np.log10(flux[p,0]),s=5,color='k')
-    ax.scatter(mag[p[stars],3],25-2.5*np.log10(flux[p[stars],0]),s=5,color='c')
-    ax.plot(x,x,'r--')
-    ax.plot(x,x+offset,'r',label=r'$\Delta mag = %4.2f$'%offset)
-    ax.grid()
-    ax.legend(loc='upper left')
-    ax.set_xlabel('DAOPhot mag',fontsize='14')
-    ax.set_ylabel('25-2.5*log(pyDIA flux)',fontsize='14')
+    ax1 = fig.add_subplot(223, position=rect_scatter)
+    ax1.scatter(mag[p,3],25-2.5*np.log10(flux[p,0])-mag[p,3],s=5,color='k')
+    ax1.scatter(mag[p[stars],3],25-2.5*np.log10(flux[p[stars],0])-mag[p[stars],3],s=5,color='c')
+    #ax.plot(x,x,'r--')
+    ax1.plot(x,x*0.0+offset,'r',label=r'$\Delta mag = %4.2f$'%offset)
+    ax1.grid()
+    ax1.legend(loc='upper left')
+    ax1.set_xlabel('DAOPhot mag',fontsize='14')
+    ax1.set_ylabel('25-2.5*log(pyDIA flux)-(DAOPhot mag)',fontsize='14')
     xmin, xmax  = plt.xlim()
     ymin, ymax  = plt.ylim()
     xx = np.linspace(xmin,xmax,1000)
     
-    ax = fig.add_subplot(221, position=rect_histx)
-    hval, bins, _ = ax.hist(mag[p,3],range=(xmin,xmax),bins=int((xmax-xmin)/binsize+1),
+    ax2 = fig.add_subplot(221, position=rect_histx)
+    hval, bins, _ = ax2.hist(mag[p,3],range=(xmin,xmax),bins=int((xmax-xmin)/binsize+1),
                             normed=True,alpha=0.3)
     kde_skl = KernelDensity(kernel='epanechnikov',bandwidth=bandwidth)
     sample = mag[p,3]
     kde_skl.fit(sample[:, np.newaxis])
     log_pdf = kde_skl.score_samples(xx[:, np.newaxis])
-    ax.plot(xx,np.exp(log_pdf),'r')
-    ax.xaxis.set_major_formatter(nullfmt)
-    ax.yaxis.set_major_formatter(nullfmt)
-    ax.set_title(dir)
+    ax2.plot(xx,np.exp(log_pdf),'r')
+    ax2.xaxis.set_major_formatter(nullfmt)
+    ax2.yaxis.set_major_formatter(nullfmt)
+    ax2.set_title(dir)
 
-    ax = fig.add_subplot(221, position=rect_histy)
-    ax.hist(25-2.5*np.log10(flux[p,0]),range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
+    ax3 = fig.add_subplot(221, position=rect_histy)
+    ax3.hist(25-2.5*np.log10(flux[p,0])-mag[p,3],range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
             orientation='horizontal',normed=True,alpha=0.3)
-    ax.xaxis.set_major_formatter(nullfmt)
-    ax.yaxis.set_major_formatter(nullfmt)
+    ax3.xaxis.set_major_formatter(nullfmt)
+    ax3.yaxis.set_major_formatter(nullfmt)
+
+    ax1.set_ylim((offset-1,offset+1))
+    ax3.set_ylim((offset-1,offset+1))
+    plt.savefig(os.path.join(dir,plotfile))
+
+    ax1.set_ylim((offset-0.1,offset+0.1))
+    ax3.set_ylim((offset-0.1,offset+0.1))
+    plt.savefig(os.path.join(dir,'zoom-'+plotfile))
+
 
     mag[:,3] += offset
     if mag.shape[1] == 4:
         np.savetxt(os.path.join(dir,'ref.mags.calibrated'),mag,fmt='%5d  %8.3f  %8.3f  %7.4f')
     else:
-        np.savetxt(os.path.join(dir,'ref.mags.calibrated'),mag,fmt='%5d  %8.3f  %8.3f  %7.4f  %7.4f  %7.3f  %7.3f')
+        np.savetxt(os.path.join(dir,'ref.mags.calibrated'),mag,fmt='%5d  %8.3f  %8.3f  %7.4f  %7.4f  %7.3f  %7.3f %7.3f')
 
     cflux = 10.0**(0.4*(25-mag[:,3]))
     if mag.shape[1] == 4:
@@ -98,13 +110,15 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     np.savetxt(os.path.join(dir,'ref.flux.calibrated'),np.vstack((cflux,cfluxerr)).T,fmt='%12.4f  %12.4f')
 
 
-    plt.savefig(os.path.join(dir,plotfile))
 
+def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None):
 
+    if ifile is None:
+        ifile = os.path.join(dirI,'ref.mags.calibrated')
 
-def makeCMD(dirI,dirV,bandwidth = 0.25):
-    ifile = os.path.join(dirI,'ref.mags.calibrated')
-    vfile = os.path.join(dirV,'ref.mags.calibrated')
+    if vfile is None:
+        vfile = os.path.join(dirV,'ref.mags.calibrated')
+
     im = np.loadtxt(ifile)
     vm = np.loadtxt(vfile)
     p = np.where((im[:,3] > 0) & (vm[:,3] > 0))[0]
@@ -123,8 +137,10 @@ def makeCMD(dirI,dirV,bandwidth = 0.25):
 
     print xmin, xmax, ymin, ymax
     
-    np.savetxt(dirI+'-'+dirV+'-CMDdata',np.vstack((vm[p,3],im[p,3],vm[p,4],im[p,4])).T,
-               fmt='%7.4f   %7.4f   %7.4f   %7.4f')
+    np.savetxt(dirI+'-'+dirV+'-CMDdata',
+                np.vstack((im[p,0],im[p,1],im[p,2],vm[p,3],vm[p,4],im[p,3],im[p,4])).T,
+                fmt='%6d %9.3f %9.3f %7.4f   %7.4f   %7.4f   %7.4f',
+                header='ID  xpos  ypos  V  V_err  I  I_err')
     
     plt.figure()
     samples = np.vstack([vm[p,3]-im[p,3],im[p,3]]).T
@@ -157,4 +173,6 @@ def makeCMD(dirI,dirV,bandwidth = 0.25):
     plt.ylim((ymax,ymin))
     plt.savefig(dirI+'-'+dirV+'-CMD-density.png')
     plt.close()
+
+    return Y[local_maxima],X[local_maxima]
 

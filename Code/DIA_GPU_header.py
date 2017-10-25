@@ -1,1 +1,1 @@
-from cuda_interface_functions import *
+import cuda_interface_functions as CI

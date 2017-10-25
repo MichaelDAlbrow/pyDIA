@@ -304,7 +304,7 @@ void cu_convolve_image_psf(int profile_type, int nx, int ny, int dx, int dy,
                            int *kyindex, int* ext_basis, float *psf_parameters,
                            float *psf_0, float *psf_xd, float *psf_yd,
                            float *coeff,
-                           float *cim1, float* cim2, float *tex0, float *tex1) {
+                           float *cim1, float* cim2, float *tex0, float *tex1, float gain) {
 
 	int     id, txa, tyb, txag, tybg, imax, jmax, idxmin, idxmax, idymin, idymax;
 	int     np, ns, i, j, ii, ip, jp, ic, ki, a, b;
@@ -313,7 +313,7 @@ void cu_convolve_image_psf(int profile_type, int nx, int ny, int dx, int dy,
 	float   x, y, p0, p1, p1g, cpsf_pixel;
 	int     xpos, ypos;
 	float   psf_height, psf_sigma_x, psf_sigma_y, psf_sigma_xy, psf_xpos, psf_ypos;
-	float   gain, psf_rad, psf_rad2, px, py;
+	float   psf_rad, psf_rad2, px, py;
 	float   sx2, sy2, sxy2, sx2msy2, sx2psy2;
 	float  psf_norm, dd;
 	float  pi = 3.14159265, fwtosig = 0.8493218;
@@ -816,37 +816,46 @@ void cu_photom(int profile_type,
 }
 
 
+
 void cu_photom_converge(int profile_type,
-                        int nx, int ny, int dp, int ds, int n_coeff, int nkernel,
-                        int kernel_radius, int *kxindex,
-                        int *kyindex, int* ext_basis, float *psf_parameters,
-                        float *psf_0, float *psf_xd, float *psf_yd, float xpos,
-                        float ypos, float xpos0,
-                        float ypos0, float *coeff,
-                        float *flux, float *dflux,
-                        float *sjx1, float *sjx2, float *sjy1, float *sjy2,
+                        int patch_half_width, int dp, int ds, int nfiles, int *nkernel,
+                        int *kxindex, int *kyindex, int* ext_basis, int *n_coeff, float *coeff,
+                        float *psf_parameters, float *psf_0, float *psf_xd, float *psf_yd,
+                        float *diff, float *inv_var, float *im_qual, float im_qual_threshold,
+                        float *xpos0, float *ypos0, float xpos, float ypos, int nx, int ny,
                         int blockDimx, int blockDimy,
-                        float *tex0, float *tex1) {
+                        float *flux, float *dflux, float gain, int converge) {
 
 	int     id, txa, tyb, txag, tybg;
 	int     np, ns, i, j, ip, jp, ic, ki, a, b;
-	int     d1, sidx, l, m, l1, m1, ig, jg;
-	int     psf_size, ix, jx;
+	int     d1, sidx, l, m, l1, m1, ig, jg, ifile;
+	int     psf_size, ix, jx, iteration;
+	int     patch_size, patch_area, im_id;
+	float   xpos1, ypos1;
+	int 		k_index_start, c_index_start;
 	float   x, y, p0, p1, p1g, cpsf_pixel, dd;
 	float   psf_height, psf_sigma_x, psf_sigma_y, psf_sigma_xy, psf_xpos, psf_ypos;
 	float  subx, suby, psf_norm, bgnd;
 
-	float psf_sum;
+	float psf_sum, max_flux;
 	float cpsf[256], cpsf0[256];
+	float *cpsf_stack;
 	float  mpsf[256], psfxd[256], psfyd[256], psf_rad, psf_rad2;
-	float  fsum1, fsum2, fsum3, fl, gain, inv_var;
+	float  fsum1, fsum2, fsum3, fsum4, fsum5, fsum6, det, fl;
 	float   sx2, sy2, sxy2, sx2msy2, sx2psy2;
 	float  a1, sa1px, sa1py, spx, spy, spxy, px, py;
-	int blockIdx, idx, idy, i_group, i_group_previous;
+	float  sjx1, sjx2, sjy1, sjy2, dx, dy, inv_v, rr;
+	int blockIdx, idx, idy;
 	float  pi = 3.14159265, fwtosig = 0.8493218;
 
 
+	cpsf_stack = malloc(256 * nfiles * sizeof(float));
 
+	patch_size = 2 * patch_half_width + 1;
+	patch_area = patch_size * patch_size;
+
+	xpos1 = xpos;
+	ypos1 = ypos;
 
 	// number of polynomial coefficients per basis function
 	np = (dp + 1) * (dp + 2) / 2;
@@ -902,259 +911,507 @@ void cu_photom_converge(int profile_type,
 	}
 
 	// star position in normalised units
-	x = (xpos0 - 0.5 * (nx - 1)) / (nx - 1);
-	y = (ypos0 - 0.5 * (ny - 1)) / (ny - 1);
+	x = (*xpos0 - 0.5 * (nx - 1)) / (nx - 1);
+	y = (*ypos0 - 0.5 * (ny - 1)) / (ny - 1);
 
-	// Construct the convolved PSF
-	for (idx = 0; idx < blockDimx; idx++) {
-		for (idy = 0; idy < blockDimy; idy++) {
-			id = idx + idy * blockDimx;
+	// Main iteration loop to refine positions
 
 
-			// PSF at location (Idx,Idy). PSF is centred at (7.5,7.5)
-			// Analytic part
-
-			p0 = integrated_profile(profile_type, idx, idy, xpos, ypos,
-			                        psf_parameters, psf_0, psf_xd, psf_yd);
-
-			cpsf_pixel = 0.0;
 
 
-			// Convolve the PSF
+	// Construct the convolved PSF stack
 
-			// Iterate over coefficients
-			for (ic = 0; ic < n_coeff; ic++) {
+	k_index_start = 0;
+	c_index_start = 0;
 
-				// basis function position
-				ki = ic < np ? 0 : (ic - np) / ns + 1;
+	for (ifile = 0; ifile < nfiles; ifile++) {
 
-				if (ki < nkernel) {
-
-					a = kxindex[ki];
-					b = kyindex[ki];
-
-					// Set the polynomial degree for the subvector and the
-					// index within the subvector
-					if (ki == 0) {
-						d1 = dp;
-						sidx = ic;
-					} else {
-						d1 = ds;
-						sidx = ic - np - (ki - 1) * ns;
-					}
+		for (idx = 0; idx < blockDimx; idx++) {
+			for (idy = 0; idy < blockDimy; idy++) {
+				id = idx + idy * blockDimx;
 
 
-					// Compute the polynomial index (l,m) values corresponding
-					// to the index within the subvector
-					l1 = m1 = 0;
-					if (d1 > 0) {
-						i = 0;
-						for (l = 0; l <= d1; l++) {
-							for (m = 0; m <= d1 - l; m++) {
-								if (i == sidx) {
-									l1 = l;
-									m1 = m;
-								}
-								i++;
-							}
-						}
-					}
+				// PSF at location (Idx,Idy). PSF is centred at (7.5,7.5)
+				// Analytic part
 
-					// Indices into the PSF
-					if (ki > 0) {
+				p0 = integrated_profile(profile_type, idx, idy, *xpos0, *ypos0,
+				                        psf_parameters, psf_0, psf_xd, psf_yd);
 
-						txa = idx + a;
-						tyb = idy + b;
+				cpsf_pixel = 0.0;
 
-						p1 = integrated_profile(profile_type, txa, tyb, xpos, ypos,
-						                        psf_parameters, psf_0, psf_xd, psf_yd);
 
-						// If we have an extended basis function, we need to
-						// average the PSF over a 3x3 grid
-						if (ext_basis[ki]) {
+				// Convolve the PSF
 
-							p1 = 0.0;
-							for (ig = -1; ig < 2; ig++) {
-								for (jg = -1; jg < 2; jg++) {
-									txag = txa + ig;
-									tybg = tyb + jg;
+				// Iterate over coefficients
+				for (ic = 0; ic < n_coeff[ifile]; ic++) {
 
-									p1g = integrated_profile(profile_type, txag, tybg, xpos, ypos,
-									                         psf_parameters, psf_0, psf_xd,
-									                         psf_yd);
+					// basis function position
+					ki = ic < np ? 0 : (ic - np) / ns + 1;
 
-									p1 += p1g;
-								}
-							}
-							p1 /= 9.0;
+					if (ki < nkernel[ifile]) {
 
+						a = kxindex[k_index_start + ki];
+						b = kyindex[k_index_start + ki];
+
+						// Set the polynomial degree for the subvector and the
+						// index within the subvector
+						if (ki == 0) {
+							d1 = dp;
+							sidx = ic;
+						} else {
+							d1 = ds;
+							sidx = ic - np - (ki - 1) * ns;
 						}
 
-						cpsf_pixel += coeff[ic] * (p1 - p0) * pow(x, l1) * pow(y, m1);
 
-					} else {
+						// Compute the polynomial index (l,m) values corresponding
+						// to the index within the subvector
+						l1 = m1 = 0;
+						if (d1 > 0) {
+							i = 0;
+							for (l = 0; l <= d1; l++) {
+								for (m = 0; m <= d1 - l; m++) {
+									if (i == sidx) {
+										l1 = l;
+										m1 = m;
+									}
+									i++;
+								}
+							}
+						}
 
-						cpsf_pixel += coeff[ic] * p0 * pow(x, l1) * pow(y, m1);
+						// Indices into the PSF
+						if (ki > 0) {
+
+							txa = idx + a;
+							tyb = idy + b;
+
+							p1 = integrated_profile(profile_type, txa, tyb, *xpos0, *ypos0,
+							                        psf_parameters, psf_0, psf_xd, psf_yd);
+
+							// If we have an extended basis function, we need to
+							// average the PSF over a 3x3 grid
+							if (ext_basis[k_index_start + ki]) {
+
+								p1 = 0.0;
+								for (ig = -1; ig < 2; ig++) {
+									for (jg = -1; jg < 2; jg++) {
+										txag = txa + ig;
+										tybg = tyb + jg;
+
+										p1g = integrated_profile(profile_type, txag, tybg, *xpos0, *ypos0,
+										                         psf_parameters, psf_0, psf_xd,
+										                         psf_yd);
+
+										p1 += p1g;
+									}
+								}
+								p1 /= 9.0;
+
+							}
+
+							cpsf_pixel += coeff[c_index_start + ic] * (p1 - p0) * pow(x, l1) * pow(y, m1);
+
+						} else {
+
+							cpsf_pixel += coeff[c_index_start + ic] * p0 * pow(x, l1) * pow(y, m1);
+
+						}
 
 					}
 
+				} //end ic loop
+
+				cpsf0[id] = cpsf_pixel / psf_norm;
+
+			}
+		}
+
+		// Copy the PSF
+		for (i = 0; i < 256; i++) cpsf[i] = cpsf0[i];
+
+
+		// Convert PSF to cubic OMOMS representation
+		resolve_coeffs_2d(16, 16, 16, cpsf);
+
+		for (i = 0; i < 256; i++) {
+			cpsf_stack[ifile * 256 + i] = cpsf[i];
+		}
+
+		k_index_start += nkernel[ifile];
+		c_index_start += n_coeff[ifile];
+
+	}  // End construct convolved PSF stack
+
+
+	// Main iteration to converge coordinates
+
+	if (converge == 1) {
+
+		iteration = 0;
+
+		do {
+
+			max_flux = 0.0;
+
+			subx = ceil(xpos + 0.5) - (xpos + 0.5);
+			suby = ceil(ypos + 0.5) - (ypos + 0.5);
+
+			sjx1 = sjx2 = sjy1 = sjy2 = 0.0;
+
+			for (ifile = 0; ifile < nfiles; ifile++) {
+
+
+				// Interpolate the PSF to the subpixel star coordinates
+				for (i = 0; i < 256; i++) {
+					mpsf[i] = 0.0;
+					psfxd[i] = 0.0;
+					psfyd[i] = 0.0;
 				}
 
-			} //end ic loop
+				psf_sum = 0.0;
 
-			cpsf0[id] = cpsf_pixel / psf_norm;
+				for (idx = 1; idx < 15; idx++) {
+					for (idy = 1; idy < 15; idy++) {
+						id = idx + idy * blockDimx;
+						mpsf[id] = (float)interpolate_2d(subx, suby, 16,
+						                                 &cpsf_stack[ifile * 256 + (idx) + (idy) * blockDimx]);
+						mpsf[id] = mpsf[id] > 0.0 ? mpsf[id] : 0.0;
+						psf_sum += mpsf[id];
+					}
+				}
 
-		}
-	}
+				// Compute optimal flux estimate
 
-	// Copy the PSF
-	for (i = 0; i < 256; i++) cpsf[i] = cpsf0[i];
+				if (psf_sum < 1.e-6) {
 
+					sjx1 = 0.0;
+					sjx2 = 1.0;
+					sjy1 = 0.0;
+					sjy2 = 1.0;
+					flux[ifile] = 0.0;
+					dflux[ifile] = 1.0e6;
 
-	// Convert PSF to cubic OMOMS representation
-	resolve_coeffs_2d(16, 16, 16, cpsf);
+				} else {
 
+					fl = 0.0;
+					for (j = 0; j < 3; j++) {
 
-	subx = ceil(xpos + 0.5 + 0.0000000001) - (xpos + 0.5);
-	suby = ceil(ypos + 0.5 + 0.0000000001) - (ypos + 0.5);
+						fsum1 = fsum2 = fsum3 = fsum4 = fsum5 = fsum6 = 0.0;
 
-	// Interpolate the PSF to the subpixel star coordinates
-	for (i = 0; i < 256; i++) {
-		mpsf[i] = 0.0;
-		psfxd[i] = 0.0;
-		psfyd[i] = 0.0;
-	}
+						for (idx = 0; idx < 16; idx++) {
+							for (idy = 0; idy < 16; idy++) {
 
-	psf_sum = -1.0e-6;
-	for (idx = 1; idx < 15; idx++) {
-		for (idy = 1; idy < 15; idy++) {
-			id = idx + idy * blockDimx;
-			mpsf[id] = (float)interpolate_2d(subx, suby, 16,
-			                                 &cpsf[(idx - 2) + (idy - 2) * blockDimx]);
-			psfxd[id] = 0.0;
-			psfyd[id] = 0.0;
-			mpsf[id] = mpsf[id] > 0.0 ? mpsf[id] : 0.0;
-			psf_sum += mpsf[id];
-		}
-	}
+								id = idx + idy * blockDimx;
 
-	// Compute PSF derivatives
-	for (idx = 2; idx < 14; idx++) {
-		for (idy = 2; idy < 14; idy++) {
-			id = idx + idy * blockDimx;
-			psfxd[id] = 0.5 * (mpsf[idx + 1 + idy * blockDimx] - mpsf[idx - 1 + idy * blockDimx]);
-			psfyd[id] = 0.5 * (mpsf[idx + (idy + 1) * blockDimx] - mpsf[idx + (idy - 1) * blockDimx]);
-		}
-	}
+								if (pow(idx - 7.5, 2) + pow(idy - 7.5, 2) < psf_rad2) {
 
 
-	if (psf_sum < 0.0) {
-		*sjx1 = 0.0;
-		*sjx2 = 1.0;
-		*sjy1 = 0.0;
-		*sjy2 = 1.0;
-		*flux = 0.0;
-		*dflux = 1.0e6;
-
-	} else {
-
-		// Compute optimal flux estimate
-		fl = 0.0;
-		for (j = 0; j < 3; j++) {
-
-			fsum1 = fsum2 = fsum3 = 0.0;
-
-			for (idx = 0; idx < 16; idx++) {
-				for (idy = 0; idy < 16; idy++) {
-					id = idx + idy * blockDimx;
-
-					if (pow(idx - 7.5, 2) + pow(idy - 7.5, 2) < psf_rad2) {
+									// Fit the mapped PSF to the difference image to compute an
+									// optimal flux estimate.
+									// We have to iterate to get the correct variance.
 
 
-						// Fit the mapped PSF to the difference image to compute an
-						// optimal flux estimate.
-						// Assume the difference image is in tex(:,:,0)
-						// and the inverse variance in tex(:,:,1).
-						// We have to iterate to get the correct variance.
+									//ix = (int)floor(xpos + 0.5) + idx - 8.0;
+									//jx = (int)floor(ypos + 0.5) + idy - 8.0;
+									ix = (int)floor(xpos + 0.5) + idx - 7;
+									jx = (int)floor(ypos + 0.5) + idy - 7;
+									im_id = ifile * patch_area + ix + patch_size * jx;
 
-						ix = (int)floor(xpos + 0.5) + idx - 8.0;
-						jx = (int)floor(ypos + 0.5) + idy - 8.0;
+									inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
 
-						inv_var = 1.0 / (1.0 / tex1[ix + jx * 32] + fl * mpsf[id] / gain);
-						if (isnan(inv_var)) {
-							printf("idx,idy,tex1,fl,mpsf: %d %d %f %f %f\n", idx, idy, tex1[ix + jx * 32], fl, mpsf[id]);
+									fsum1 += mpsf[id] * diff[im_id] * inv_v;
+									fsum2 += mpsf[id] * mpsf[id] * inv_v;
+									fsum3 += mpsf[id];
+									fsum4 += mpsf[id] * inv_v;
+									fsum5 += inv_v;
+									fsum6 += diff[im_id] * inv_v;
+
+								}
+
+							}
+						}
+
+						if (fsum2 > 1.e-8) {
+							fl = fsum1 / fsum2;
+							// To fit flux and background
+							//det = fsum2*fsum5 - fsum4*fsum4;
+							//fl = (fsum5*fsum1 -fsum4*fsum6)/det;
+						}
+
+						if (isnan(fl)) {
+							printf("j psf_sum: %d %f\n", j);
 							for (idx = 0; idx < 16; idx++) {
 								for (idy = 0; idy < 16; idy++) {
 									id = idx + idy * blockDimx;
-									ix = (int)floor(xpos + 0.5) + idx - 8.0;
-									jx = (int)floor(ypos + 0.5) + idy - 8.0;
-									printf("idx,idy,tex1: %d %d %f\n", idx, idy, tex1[ix + jx * 32]);
+									if (pow(idx - 7.5, 2) + pow(idy - 7.5, 2) < psf_rad2) {
+										ix = (int)floor(xpos + 0.5) + idx - 7;
+										jx = (int)floor(ypos + 0.5) + idy - 7;
+										im_id = ifile * patch_area + ix + patch_size * jx;
+										inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
+										printf("ifile,idx,idy,ix,jx,mpsf,inv_v,diff, inv_var[im_id], gain: %d %d %d %d %d %f %f %f %f %f\n", ifile, idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id], gain);
+									}
 								}
 							}
 							exit(1);
 						}
 
-						fsum1 += mpsf[id] * tex0[ix + jx * 32] * inv_var;
-						fsum2 += mpsf[id] * mpsf[id] * inv_var;
-						fsum3 += mpsf[id];
+					} // End of iteration over j
 
+					flux[ifile] = fl;
+					dflux[ifile] = sqrt(fsum3 * fsum3 / fsum2);
+
+					if ((fabs(fl) > max_flux) && (im_qual[ifile] < im_qual_threshold)) {
+						max_flux = fabs(fl);
 					}
 
 				}
 
 			}
-			fl = fsum1 / fsum2;
 
-			if (isnan(fl)) {
-				printf("j: %d\n", j);
+			// Compute contributions to coordinate correction
+
+			if (iteration > 0) {
+
+				printf("max_flux: %f\n", max_flux);
+
+				for (ifile = 0; ifile < nfiles; ifile++) {
+
+					if ((fabs(flux[ifile]) > 0.2 * max_flux) && (fabs(flux[ifile]) > 10.0 * dflux[ifile]) && (im_qual[ifile] < im_qual_threshold)) {
+
+						// Interpolate the PSF to the subpixel star coordinates
+						for (i = 0; i < 256; i++) {
+							mpsf[i] = 0.0;
+							psfxd[i] = 0.0;
+							psfyd[i] = 0.0;
+						}
+
+						psf_sum = 0.0;
+
+						for (idx = 1; idx < 15; idx++) {
+							for (idy = 1; idy < 15; idy++) {
+								id = idx + idy * blockDimx;
+								mpsf[id] = (float)interpolate_2d(subx, suby, 16,
+								                                 &cpsf_stack[ifile * 256 + (idx) + (idy) * blockDimx]);
+								mpsf[id] = mpsf[id] > 0.0 ? mpsf[id] : 0.0;
+								psf_sum += mpsf[id];
+							}
+						}
+
+						// Compute PSF derivatives
+						for (idx = 2; idx < 14; idx++) {
+							for (idy = 2; idy < 14; idy++) {
+								id = idx + idy * blockDimx;
+								psfxd[id] = 0.5 * (mpsf[idx + 1 + idy * blockDimx] - mpsf[idx - 1 + idy * blockDimx]);
+								psfyd[id] = 0.5 * (mpsf[idx + (idy + 1) * blockDimx] - mpsf[idx + (idy - 1) * blockDimx]);
+							}
+						}
+
+
+						printf("ifile, flux, dflux, im_qual, threshold: %d %f %f %f %f\n", ifile, flux[ifile], dflux[ifile], im_qual[ifile], im_qual_threshold);
+
+						sa1px = sa1py = spx = spy = spxy = 0.0;
+
+						//printf("ifile idx idy ix jx mpsf diff flux a1 psfxd psfyd:\n");
+
+						for (idx = 2; idx < 14; idx++) {
+							for (idy = 2; idy < 14; idy++) {
+
+								id = idx + idy * blockDimx;
+								ix = (int)floor(xpos + 0.5) + idx - 7;
+								jx = (int)floor(ypos + 0.5) + idy - 7;
+								im_id = ifile * patch_area + ix + patch_size * jx;
+
+								inv_v = 1.0 / (1.0 / inv_var[im_id] + flux[ifile] * mpsf[id] / gain);
+
+								if ((inv_v > 0.0) && (fabs(psfxd[id]) > 1.e-8) && (fabs(psfyd[id]) > 1.e-8)) {
+
+									a1 = diff[im_id] - flux[ifile] * mpsf[id];
+									sa1px += a1 * psfxd[id] * inv_v;
+									sa1py += a1 * psfyd[id] * inv_v;
+									spx += psfxd[id] * psfxd[id] * inv_v;
+									spy += psfyd[id] * psfyd[id] * inv_v;
+									spxy += psfxd[id] * psfyd[id] * inv_v;
+
+									//printf("%d %d %d %d %d %f %f %f %f %f %f\n",ifile,idx,idy,ix,jx,mpsf[id],diff[im_id],flux[ifile],a1,psfxd[id],psfyd[id]);
+
+									if (isnan(a1)) {
+										printf("diff,fl,mpsf: %f %f %f\n", diff[im_id], flux[ifile], mpsf[id]);
+										printf("%d %d %f %f %f %f %f %f\n", idx, idy, a1, sa1px, sa1py, spx, spy, spxy);
+										exit(1);
+									}
+
+								}
+
+							}
+						}
+
+						sjx1 += flux[ifile] * (sa1px - sa1py * spxy / spy);
+						sjx2 += flux[ifile] * flux[ifile] * (spx - spxy * spxy / spy);
+						sjy1 += flux[ifile] * (sa1py - sa1px * spxy / spx);
+						sjy2 += flux[ifile] * flux[ifile] * (spy - spxy * spxy / spx);
+
+					} //Close if fabs(flux)
+
+				}  // End loop over files
+
+				dx = sjx1 / sjx2;
+				dy = sjy1 / sjy2;
+
+				xpos -= dx;
+				ypos -= dy;
+
+				printf("dx dy: %f %f    +    %f %f    ->    %f %f\n", xpos + dx, ypos + dy, dx, dy, xpos, ypos);
+
+				rr = ((xpos - xpos1) * (xpos - xpos1) + (ypos - ypos1) * (ypos - ypos1));
+
+			} else {
+
+				rr = 0.0;
+				dx = 1.0;
+
+			}
+
+			iteration++;
+
+		} while ((iteration < 20) && ( (fabs(dx) > 0.00001) || (fabs(dy) > 0.00001) || (iteration == 0)) && (rr < 100) );
+
+		if (rr >= 100) {
+			xpos = xpos1;
+			ypos = ypos1;
+			printf("Warning: position has diverged. Reverting to original coordinates\n");
+		}
+
+		*xpos0 += (xpos - xpos1);
+		*ypos0 += (ypos - ypos1);
+
+	}
+
+	printf("Final position: %f %f\n", *xpos0, *ypos0);
+
+	subx = ceil(xpos + 0.5) - (xpos + 0.5);
+	suby = ceil(ypos + 0.5) - (ypos + 0.5);
+
+	for (ifile = 0; ifile < nfiles; ifile++) {
+
+		// Interpolate the PSF to the subpixel star coordinates
+		for (i = 0; i < 256; i++) {
+			mpsf[i] = 0.0;
+			psfxd[i] = 0.0;
+			psfyd[i] = 0.0;
+		}
+
+		psf_sum = 0.0;
+
+		for (idx = 1; idx < 15; idx++) {
+			for (idy = 1; idy < 15; idy++) {
+				id = idx + idy * blockDimx;
+				mpsf[id] = (float)interpolate_2d(subx, suby, 16,
+				                                 &cpsf_stack[ifile * 256 + (idx) + (idy) * blockDimx]);
+				mpsf[id] = mpsf[id] > 0.0 ? mpsf[id] : 0.0;
+				psf_sum += mpsf[id];
+			}
+		}
+
+		// Compute optimal flux estimate
+
+		if (psf_sum < 1.e-6) {
+
+			flux[ifile] = 0.0;
+			dflux[ifile] = 1.0e6;
+
+		} else {
+
+			fl = 0.0;
+			for (j = 0; j < 3; j++) {
+
+				fsum1 = fsum2 = fsum3 = fsum4 = fsum5 = fsum6 = 0.0;
+
 				for (idx = 0; idx < 16; idx++) {
 					for (idy = 0; idy < 16; idy++) {
+
 						id = idx + idy * blockDimx;
+
 						if (pow(idx - 7.5, 2) + pow(idy - 7.5, 2) < psf_rad2) {
-							ix = (int)floor(xpos + 0.5) + idx - 8.0;
-							jx = (int)floor(ypos + 0.5) + idy - 8.0;
-							inv_var = 1.0 / (1.0 / tex1[ix + jx * 32] + fl * mpsf[id] / gain);
-							printf("idx,idy,ix,jx,mpsf,inv_var,tex0: %d %d %d %d %f %f %f\n", idx, idy, ix, jx, mpsf[id], inv_var, tex0[ix + jx * 32]);
+
+
+							// Fit the mapped PSF to the difference image to compute an
+							// optimal flux estimate.
+							// We have to iterate to get the correct variance.
+
+
+							ix = (int)floor(xpos + 0.5) + idx - 7;
+							jx = (int)floor(ypos + 0.5) + idy - 7;
+							im_id = ifile * patch_area + ix + patch_size * jx;
+
+							inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
+
+							fsum1 += mpsf[id] * diff[im_id] * inv_v;
+							fsum2 += mpsf[id] * mpsf[id] * inv_v;
+							fsum3 += mpsf[id];
+							fsum4 += mpsf[id] * inv_v;
+							fsum5 += inv_v;
+							fsum6 += diff[im_id] * inv_v;
+
+//							if (j==2) {
+//								printf("%d %d %d %d %d %f %f %f\n",ifile,idx,idy,ix,jx,mpsf[id],diff[im_id],inv_v);
+//							}
+
+						}
+
+					}
+
+				}
+
+				if (fsum2 > 1.e-8) {
+					fl = fsum1 / fsum2;
+					//det = fsum2*fsum5 - fsum4*fsum4;
+					//fl = (fsum5*fsum1 -fsum4*fsum6)/det;
+				}
+
+				if (isnan(fl)) {
+					printf("ifile, j: %d %d\n", ifile, j);
+					for (idx = 0; idx < 16; idx++) {
+						for (idy = 0; idy < 16; idy++) {
+							id = idx + idy * blockDimx;
+							if (pow(idx - 7.5, 2) + pow(idy - 7.5, 2) < psf_rad2) {
+								ix = (int)floor(xpos + 0.5) + idx - 7;
+								jx = (int)floor(ypos + 0.5) + idy - 7;
+								im_id = ifile * patch_area + ix + patch_size * jx;
+								inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
+								printf("idx,idy,ix,jx,mpsf,inv_v,diff,inv_var: %d %d %d %d %f %f %f %f\n", idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id]);
+							}
 						}
 					}
 				}
-				exit(1);
+
 			}
 
-		}
+			flux[ifile] = fl;
+			dflux[ifile] = sqrt(fsum3 * fsum3 / fsum2);
 
-		*flux = fl;
-		*dflux = sqrt(fsum3 * fsum3 / fsum2);
+			// Subtract fitted PSF from difference images
 
-		// Compute contributions to coordinate correction
-		sa1px = sa1py = spx = spy = spxy = 0.0;
-		for (idx = 2; idx < 14; idx++) {
-			for (idy = 2; idy < 14; idy++) {
-				id = idx + idy * blockDimx;
-				ix = (int)floor(xpos + 0.5) + idx - 8.0;
-				jx = (int)floor(ypos + 0.5) + idy - 8.0;
-				inv_var = 1.0 / (1.0 / tex1[ix + jx * 32] + fl * mpsf[id] / gain);
-				a1 = tex0[ix + jx * 32] - fl * mpsf[id];
-				sa1px += a1 * psfxd[id] * inv_var;
-				sa1py += a1 * psfyd[id] * inv_var;
-				spx += psfxd[id] * psfxd[id] * inv_var;
-				spy += psfyd[id] * psfyd[id] * inv_var;
-				spxy += psfxd[id] * psfyd[id] * inv_var;
-				if (isnan(a1)) {
-					printf("tex0,fl,mpsf: %f %f %f\n", tex0[ix + jx * 32], fl, mpsf[id]);
-					printf("%d %d %f %f %f %f %f %f\n", idx, idy, a1, sa1px, sa1py, spx, spy, spxy);
-					exit(1);
+			for (idx = 0; idx < 16; idx++) {
+				for (idy = 0; idy < 16; idy++) {
+
+					id = idx + idy * blockDimx;
+					ix = (int)floor(xpos + 0.5) + idx - 7;
+					jx = (int)floor(ypos + 0.5) + idy - 7;
+					im_id = ifile * patch_area + ix + patch_size * jx;
+
+					diff[im_id] -= flux[ifile] * mpsf[id];
+
 				}
 			}
+
+
 		}
-		*sjx1 = fl * (sa1px - sa1py * spxy / spy);
-		*sjx2 = fl * fl * (spx - spxy * spxy / spy);
-		*sjy1 = fl * (sa1py - sa1px * spxy / spx);
-		*sjy2 = fl * fl * (spy - spxy * spxy / spx);
-		//    printf("%f %f %f %f     %f %f\n",*sjx1,*sjx2,*sjy1,*sjy2,(*sjx1)/(*sjx2),(*sjy1)/(*sjy2));
-		//  exit(1);
+
 	}
+
 }
+
 
 
 
