@@ -281,7 +281,7 @@ def plot_lightcurve(file, columns=(0,3,4),plotfile='lightcurve.png'):
     data = np.loadtxt(file)
  
     plt.figure(figsize=(8,5))
-    plt.errorbar(data[columns[0]],data[columns[1]],data[columns[2]],fmt='.')
+    plt.errorbar(data[:,columns[0]],data[:,columns[1]],data[:,columns[2]],fmt='.')
     plt.xlabel(r'$HJD - 2450000$')
     plt.ylabel(r'$Magnitude$')
     plt.savefig(plotfile)
