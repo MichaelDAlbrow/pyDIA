@@ -151,7 +151,7 @@ class Parameters:
         self.ref_image_list = 'ref.images'
         self.ref_include_file = None
         self.ref_exclude_file = None
-        self.reference_min_seeing = 1.3
+        self.reference_min_seeing = 1.0
         self.reference_max_roundness = 1.3
         self.reference_seeing_factor = 1.01
         self.reference_sky_factor = 1.3

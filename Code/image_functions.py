@@ -244,23 +244,30 @@ def undo_photometric_scale(d,c,pdeg,size=None,position=(0,0)):
 
 
 
-def compute_fwhm(f,params,width=20,seeing_file='seeing'):
+def compute_fwhm(f,params,width=20,seeing_file='seeing',image_name=False):
 
     from scipy.signal import fftconvolve
     from scipy.interpolate import interp1d
     from astropy.modeling import models, fitting
 
-    fw = None
-    if os.path.exists(seeing_file):
-        for line in open(seeing_file,'r'):
+    g_width = None
+
+    if image_name:
+        fname = f
+    else:
+        fname = f.name
+
+    if os.path.exists(params.loc_output+os.path.sep+seeing_file):
+        for line in open(params.loc_output+os.path.sep+seeing_file,'r'):
             sline = line.split()
-            if sline[0] == f.name:
+            if sline[0] == fname:
                 g_width = float(sline[1])
                 g_roundness = float(sline[2])
                 bgnd = float(sline[3])
                 signal = float(sline[4])
                 break
-    if not(fw):
+    
+    if g_width is None:
         if isinstance(params.fwhm_section,np.ndarray):
             w = params.fwhm_section
             image = f.data[w[2]:w[3],w[0]:w[1]].copy()
