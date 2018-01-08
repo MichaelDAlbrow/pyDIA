@@ -291,9 +291,9 @@ def lomb_search(dates,y,pmin,pmax,nfreq=1000,fap_threshold=1e-7,maxvars=100,plot
         if nvars < maxvars:
             qq = np.where(np.isfinite(y[star,:]))[0]
             if len(qq)>100:
-#                print star
-#                print dates[qq]
-#                print y[star,qq]
+                print star
+                print dates[qq]
+                print y[star,qq]
                 lnp = spectral.lombscargle(dates[qq], (y[star,qq]-np.mean(y[star,qq]))/np.std(y[star,qq]), freq)
                 lnpmax = np.max(lnp)
                 p = 2*np.pi/freq[np.where(lnp == lnpmax)[0][0]]

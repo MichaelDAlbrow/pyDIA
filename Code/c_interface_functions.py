@@ -153,7 +153,7 @@ cu_photom_converge.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                 ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
                                 ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
-                                ctypes.c_double,ctypes.c_int]
+                                ctypes.c_double,ctypes.c_int,ctypes.c_double]
 
 
 cu_compute_model.restype = None
@@ -611,11 +611,12 @@ def convolve_image_with_psf(psf_image,image1,image2,c,kernelIndex,extendedBasis,
 
 
 
-def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_stamps=False,stamp_prefix='mosaic'):
+def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_stamps=False,stamp_prefix='mosaic',locate=True,locate_iterations=2,
+                          locate_half_width=14,q_sigma_threshold=1.0,locate_date_range=None):
 
     from astropy.io import fits
 
-    def save_mosaic(stack,nfiles,patch_size,name):
+    def save_mosaic(stack,nfiles,patch_size,name,diff_std,threshold):
         stamps_per_row = int(np.sqrt(nfiles))
         nrows = (nfiles-1)/stamps_per_row+1;
         mx = stamps_per_row*(patch_size+1)+1
@@ -625,17 +626,16 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
           mosaic[(i/stamps_per_row)*(patch_size+1)+1:(i/stamps_per_row+1)*(patch_size+1), \
                   (i%stamps_per_row)*(patch_size+1)+1:(i%stamps_per_row+1)*(patch_size+1)] \
                   = stack[i,:,:]
+          if diff_std[i] > threshold:
+            mosaic[(i/stamps_per_row)*(patch_size+1)+1:(i/stamps_per_row+1)*(patch_size+1), \
+                  (i%stamps_per_row)*(patch_size+1)+1] = -1000.0
+            mosaic[(i/stamps_per_row)*(patch_size+1)+1:(i/stamps_per_row+1)*(patch_size+1), \
+                  (i%stamps_per_row+1)*(patch_size+1)-1] = -1000.0
+            mosaic[(i/stamps_per_row)*(patch_size+1)+1, \
+                  (i%stamps_per_row)*(patch_size+1)+1:(i%stamps_per_row+1)*(patch_size+1)] = -1000.0                  
+            mosaic[(i/stamps_per_row+1)*(patch_size+1)-1, \
+                  (i%stamps_per_row)*(patch_size+1)+1:(i%stamps_per_row+1)*(patch_size+1)] = -1000.0                  
         IO.write_image(mosaic,name)
-
-
-    ix0 = np.int32(x0+0.5)
-    iy0 = np.int32(y0+0.5)
-
-    x_patch = x0 - ix0 + patch_half_width
-    y_patch = y0 - iy0 + patch_half_width
-
-    patch_size = 2*patch_half_width+1
-    patch_slice = (ix0-patch_half_width, ix0+patch_half_width+1, iy0-patch_half_width, iy0+patch_half_width+1)
 
     # Obtain a list of files
 
@@ -661,6 +661,10 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
     # Load the difference images into a data cube
 
     dates = np.zeros(nfiles)
+    seeing = np.zeros(nfiles)
+    roundness = np.zeros(nfiles)
+    bgnd = np.zeros(nfiles)
+    signal = np.zeros(nfiles)
     norm_std = np.zeros(nfiles,dtype=np.float64)
     diff_std = np.zeros(nfiles,dtype=np.float64)
     n_kernel = np.zeros(nfiles,dtype=np.int32)
@@ -670,51 +674,107 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
     kindex_ext = np.arange(0,dtype=np.int32)
     coeffs = np.arange(0,dtype=np.float64)
 
-    d_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
-    inv_var_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
-
     filenames.sort()
 
-    for i, f in enumerate(filenames):
+    if not converge:
+      locate_iterations = 1
 
-        basename = os.path.basename(f)
-        ktable = params.loc_output+os.path.sep+'k_'+basename
-        kernelIndex, extendedBasis, c, params = IO.read_kernel_table(ktable,params)
-        coeffs = np.hstack((coeffs,c))
-        kindex_x = np.hstack((kindex_x,kernelIndex[:,0].T))
-        kindex_y = np.hstack((kindex_y,kernelIndex[:,1].T))
-        kindex_ext = np.hstack((kindex_ext,extendedBasis))
-        n_kernel[i] = kernelIndex.shape[0]
-        n_coeffs[i] = c.shape[0]
-        dates[i] = IO.get_date(params.loc_data+os.path.sep+basename,key=params.datekey)-2450000
+    threshold = -10
+    for iteration in range(np.max([1,locate_iterations])):
 
-        dfile = params.loc_output+os.path.sep+'d_'+basename
-        nfile = params.loc_output+os.path.sep+'n_'+basename
-        diff, _ = IO.read_fits_file(dfile)
-        diff_sc = IM.undo_photometric_scale(diff,c,params.pdeg)
-        d_image_stack[i,:,:] = diff_sc[patch_slice[2]:patch_slice[3],patch_slice[0]:patch_slice[1]]
-        norm, _ = IO.read_fits_file(nfile,slice=patch_slice)
-        inv_var_image_stack[i,:,:] = (norm/d_image_stack[i,:,:])**2
-        diff_std[i] = np.std(diff)
-        d_image_stack[i,:,:] -= np.median(d_image_stack[i,:,:])
+      ix0 = np.int32(x0+0.5)
+      iy0 = np.int32(y0+0.5)
 
-    if save_stamps:
-      save_mosaic(d_image_stack,nfiles,patch_size,params.loc_output+os.path.sep+stamp_prefix+'.fits')
+      x_patch = x0 - ix0 + patch_half_width
+      y_patch = y0 - iy0 + patch_half_width
 
-    qd1 = np.arange(len(filenames))
-    for iter in range(10):
-        qd = np.where(diff_std[qd1]<np.mean(diff_std[qd1])+3*np.std(diff_std[qd1]))
-        qd1 = qd1[qd]
+      patch_size = 2*patch_half_width+1
+      patch_slice = (ix0-patch_half_width, ix0+patch_half_width+1, iy0-patch_half_width, iy0+patch_half_width+1)
 
-    print 'mean(diff) :',np.mean(diff_std[qd1])
-    print 'std(diff) :',np.std(diff_std[qd1])
-    print '1-sig threshold:', np.mean(diff_std[qd1])+1*np.std(diff_std[qd1])
-    print '3-sig threshold:', np.mean(diff_std[qd1])+3*np.std(diff_std[qd1])
+      d_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
+      inv_var_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
 
-    print '1-sig diff reject:',np.where(diff_std>np.mean(diff_std[qd1])+1*np.std(diff_std[qd1]))
-    print '3-sig diff reject:',np.where(diff_std>np.mean(diff_std[qd1])+3*np.std(diff_std[qd1]))
+      for i, f in enumerate(filenames):
 
-    threshold = np.mean(diff_std[qd1])+3*np.std(diff_std[qd1])
+          basename = os.path.basename(f)
+          ktable = params.loc_output+os.path.sep+'k_'+basename
+          kernelIndex, extendedBasis, c, params = IO.read_kernel_table(ktable,params)
+          coeffs = np.hstack((coeffs,c))
+          kindex_x = np.hstack((kindex_x,kernelIndex[:,0].T))
+          kindex_y = np.hstack((kindex_y,kernelIndex[:,1].T))
+          kindex_ext = np.hstack((kindex_ext,extendedBasis))
+          n_kernel[i] = kernelIndex.shape[0]
+          n_coeffs[i] = c.shape[0]
+          dates[i] = IO.get_date(params.loc_data+os.path.sep+basename,key=params.datekey)-2450000
+          seeing[i], roundness[i], bgnd[i], signal[i] = IM.compute_fwhm(f,params,width=20,image_name=True)
+
+          dfile = params.loc_output+os.path.sep+'d_'+basename
+          nfile = params.loc_output+os.path.sep+'n_'+basename
+          zfile = params.loc_output+os.path.sep+'z_'+basename
+          diff, _ = IO.read_fits_file(dfile)
+          mask, _ = IO.read_fits_file(zfile)
+          diff_sc = IM.undo_photometric_scale(diff,c,params.pdeg)
+          diff_sc *= mask
+          d_image_stack[i,:,:] = diff_sc[patch_slice[2]:patch_slice[3],patch_slice[0]:patch_slice[1]]
+          norm, _ = IO.read_fits_file(nfile,slice=patch_slice)
+          inv_var_image_stack[i,:,:] = (norm/d_image_stack[i,:,:])**2
+          diff_std[i] = np.std(diff)
+          d_image_stack[i,:,:] -= np.median(d_image_stack[i,:,:])
+
+      if save_stamps:
+        save_mosaic(d_image_stack,nfiles,patch_size,params.loc_output+os.path.sep+stamp_prefix+'.fits',diff_std,threshold)
+
+      print 'kappa-clipping'
+      qd1 = np.arange(len(filenames))
+      #qd = np.where(diff_std[qd1]<10)
+      #qd1 = qd1[qd]
+      for iter in range(10):
+          qd = np.where(diff_std[qd1]<np.mean(diff_std[qd1])+(4.0-1.5*(iter/9.0))*np.std(diff_std[qd1]))
+          qd1 = qd1[qd]
+          print iter, np.mean(diff_std[qd1]), np.std(diff_std[qd1]), np.mean(diff_std[qd1])+(4.0-3*(iter/9.0))*np.std(diff_std[qd1])
+
+      print 'mean(diff) :',np.mean(diff_std[qd1])
+      print 'std(diff) :',np.std(diff_std[qd1])
+      print '1-sig threshold:', np.mean(diff_std[qd1])+1*np.std(diff_std[qd1])
+      print '2-sig threshold:', np.mean(diff_std[qd1])+2*np.std(diff_std[qd1])
+      print '3-sig threshold:', np.mean(diff_std[qd1])+3*np.std(diff_std[qd1])
+
+      print '1-sig diff reject:',np.where(diff_std>np.mean(diff_std[qd1])+1*np.std(diff_std[qd1]))
+      print '2-sig diff reject:',np.where(diff_std>np.mean(diff_std[qd1])+2*np.std(diff_std[qd1]))
+      print '3-sig diff reject:',np.where(diff_std>np.mean(diff_std[qd1])+3*np.std(diff_std[qd1]))
+
+      threshold = np.mean(diff_std[qd1])+q_sigma_threshold*np.std(diff_std[qd1])
+      threshold2 = np.mean(diff_std[qd1])+2*np.std(diff_std[qd1])
+      threshold3 = np.mean(diff_std[qd1])+3*np.std(diff_std[qd1])
+
+      if locate_date_range is not None:
+        diff_std_copy = diff_std.copy()
+        diff_std = diff_std*0.0 + 2*threshold
+        pp = np.where((dates>locate_date_range[0]) & (dates<locate_date_range[1]))[0]
+        if pp.any():
+          diff_std[pp] = diff_std_copy[pp]
+        else:
+          print 'Error: No images found in date range',locate_date_range
+          print 'Reverting to all dates.'
+          diff_std = diff_std_copy
+
+      dsum = np.zeros((patch_size,patch_size),dtype=np.float64)
+      for i in range(nfiles):
+        if diff_std[i] < threshold3:
+          dsum += d_image_stack[i,:,:]
+      IO.write_image(dsum,params.loc_output+os.path.sep+'dsum%d.fits'%iteration)
+      dr = patch_half_width-int(locate_half_width)
+      dsum[:dr,:] = 0.0
+      dsum[-dr:,:] = 0.0
+      dsum[:,:dr] = 0.0
+      dsum[:,-dr:] = 0.0
+      ind_dsum_max = np.unravel_index(dsum.argmax(),dsum.shape)
+      print 'Iteration',iteration,': dsum maximum located at ',ind_dsum_max
+
+      if locate and converge:
+        y0 += ind_dsum_max[0] - patch_half_width
+        x0 += ind_dsum_max[1] - patch_half_width
+
 
     # Read the PSF
 
@@ -763,10 +823,14 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
                         n_kernel, kindex_x, kindex_y, kindex_ext, n_coeffs, coeffs.astype(np.float64),
                         psf_parameters, psf_0, psf_xd, psf_yd,
                         np.float64(d_image_stack.ravel()), inv_var_image_stack, diff_std, np.float64(threshold),
-                        x0_arr, y0_arr, x_patch, y_patch, diff.shape[1], diff.shape[0], 16, 16, flux, dflux, np.float64(params.gain),np.int32(converge))
+                        x0_arr, y0_arr, x_patch, y_patch, diff.shape[1], diff.shape[0], 16, 16, flux, dflux, 
+                        np.float64(params.gain),np.int32(converge),np.float64(2.5))
 
     if save_stamps:
-        save_mosaic(d_image_stack,nfiles,patch_size,params.loc_output+os.path.sep+'p'+stamp_prefix+'.fits')
+        save_mosaic(d_image_stack,nfiles,patch_size,params.loc_output+os.path.sep+'p'+stamp_prefix+'.fits',diff_std,threshold)
 
-    return dates, flux, dflux, diff_std/threshold, x0_arr[0], y0_arr[0]
+    if locate_date_range is not None:
+      diff_std = diff_std_copy
+
+    return dates, seeing, roundness, bgnd, signal, flux, dflux, diff_std/threshold, x0_arr[0], y0_arr[0]
 

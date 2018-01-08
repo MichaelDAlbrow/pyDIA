@@ -10,6 +10,7 @@ from scipy.ndimage.filters import maximum_filter
 from skimage.feature import peak_local_max
 from scipy.odr import ODR, Model, RealData
 
+ZP = 27.0
 
 def locate_intercept(x,y,x_range):
     print 'locating offset'
@@ -45,7 +46,7 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     #flux[:,0] -= sky_flux
 
     x = np.linspace(np.min(mag[p,3]),np.max(mag[p,3]),3)
-    offset, stars = locate_intercept(mag[p,3],25-2.5*np.log10(flux[p,0]),magnitude_range_fraction)
+    offset, stars = locate_intercept(mag[p,3],ZP-2.5*np.log10(flux[p,0]),magnitude_range_fraction)
 
     # Axes definitions
     nullfmt = plt.NullFormatter()
@@ -58,14 +59,14 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
 
     fig = plt.figure()
     ax1 = fig.add_subplot(223, position=rect_scatter)
-    ax1.scatter(mag[p,3],25-2.5*np.log10(flux[p,0])-mag[p,3],s=5,color='k')
-    ax1.scatter(mag[p[stars],3],25-2.5*np.log10(flux[p[stars],0])-mag[p[stars],3],s=5,color='c')
+    ax1.scatter(mag[p,3],ZP-2.5*np.log10(flux[p,0])-mag[p,3],s=5,color='k')
+    ax1.scatter(mag[p[stars],3],ZP-2.5*np.log10(flux[p[stars],0])-mag[p[stars],3],s=5,color='c')
     #ax.plot(x,x,'r--')
     ax1.plot(x,x*0.0+offset,'r',label=r'$\Delta mag = %4.2f$'%offset)
     ax1.grid()
     ax1.legend(loc='upper left')
     ax1.set_xlabel('DAOPhot mag',fontsize='14')
-    ax1.set_ylabel('25-2.5*log(pyDIA flux)-(DAOPhot mag)',fontsize='14')
+    ax1.set_ylabel('ZP-2.5*log(pyDIA flux)-(DAOPhot mag)',fontsize='14')
     xmin, xmax  = plt.xlim()
     ymin, ymax  = plt.ylim()
     xx = np.linspace(xmin,xmax,1000)
@@ -83,7 +84,7 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     ax2.set_title(dir)
 
     ax3 = fig.add_subplot(221, position=rect_histy)
-    ax3.hist(25-2.5*np.log10(flux[p,0])-mag[p,3],range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
+    ax3.hist(ZP-2.5*np.log10(flux[p,0])-mag[p,3],range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
             orientation='horizontal',normed=True,alpha=0.3)
     ax3.xaxis.set_major_formatter(nullfmt)
     ax3.yaxis.set_major_formatter(nullfmt)
@@ -103,11 +104,11 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     else:
         np.savetxt(os.path.join(dir,'ref.mags.calibrated'),mag,fmt='%5d  %8.3f  %8.3f  %7.4f  %7.4f  %7.3f  %7.3f %7.3f')
 
-    cflux = 10.0**(0.4*(25-mag[:,3]))
+    cflux = 10.0**(0.4*(ZP-mag[:,3]))
     if mag.shape[1] == 4:
         cfluxerr = 0.0*cflux
     else:
-        cfluxerr = cflux - 10.0**(0.4*(25-mag[:,3]-mag[:,4]))
+        cfluxerr = cflux - 10.0**(0.4*(ZP-mag[:,3]-mag[:,4]))
     np.savetxt(os.path.join(dir,'ref.flux.calibrated'),np.vstack((cflux,cfluxerr)).T,fmt='%12.4f  %12.4f')
 
 
@@ -122,7 +123,7 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
 
     im = np.loadtxt(ifile)
     vm = np.loadtxt(vfile)
-    p = np.where((im[:,3] > 0) & (vm[:,3] > 0))[0]
+    p = np.where((im[:,4] > 0) & (vm[:,4] > 0))[0]
     
     plt.figure()
     plt.scatter(vm[p,3]-im[p,3],im[p,3],s=5)
@@ -135,11 +136,11 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
     if RC is not None:
         plt.scatter(RC[0],RC[1],color='r',marker='+',s=40,label='Red Clump (%6.3f,%6.3f)'%RC)
 
-    if IV is not None:
-        plt.scatter(IV[1]-IV[0],IV[0],color='b',marker='.',s=40,label='Source (%6.3f,%6.3f)'%(IV[1]-IV[0],IV[0]))
+    #if IV is not None:
+    #    plt.scatter(IV[1]-IV[0],IV[0],color='m',marker='.',s=40,label='Source (%6.3f,%6.3f)'%(IV[1]-IV[0],IV[0]))
 
-    if source_colour is not None:
-        plt.scatter(np.nan,np.nan,color='w',marker='.',s=40,label='Deblended source (V-I) = %6.3f'%source_colour)
+    #if source_colour is not None:
+    #    plt.scatter(np.nan,np.nan,color='w',marker='.',s=40,label='Deblended source (V-I) = %6.3f +/- %5.3f'%source_colour)
 
     plt.legend(loc='upper left')
 
@@ -164,8 +165,8 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
         kde_skl = KernelDensity(kernel='gaussian',bandwidth=bandwidth)
         kde_skl.fit(samples)
         # score_samples() returns the log-likelihood of the samples
-        xvi = np.linspace(xmin,xmax,40*(xmax-xmin)+1)
-        xi = np.linspace(ymin,ymax,40*(ymax-ymin)+1)
+        xvi = np.linspace(xmin,xmax,int(40*(xmax-xmin)+1))
+        xi = np.linspace(ymin,ymax,int(40*(ymax-ymin)+1))
         Y, X = np.meshgrid(xvi, xi[::-1])
         xy =  np.vstack([Y.ravel(), X.ravel()]).T
         Z = np.exp(kde_skl.score_samples(xy))
@@ -176,8 +177,12 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
         mx = maximum_filter(Z,size=20)
         lm = (Z == mx) * (Z > 0.01*Zmax) * (Z < 0.99*Zmax)
         if np.sum(lm) > 0:
-            local_maxima = np.nonzero(lm)[0]
-            red_clump = (float(Y[local_maxima][0,0]),float(X[local_maxima][0,0]))
+            nlm = np.nonzero(lm)
+            max_nlm = np.argmax(Z[nlm])
+            local_maxima = np.nonzero(lm)
+            i0 = local_maxima[0][max_nlm]
+            i1 = local_maxima[1][max_nlm]
+            red_clump = (float(Y[i0,i1]),float(X[i0,i1]))
             print Z[local_maxima]/Zmax
             print 'Red clump detected at',red_clump
             plt.scatter(red_clump[0],red_clump[1],color='c',marker='+',s=40,label='Red Clump estimated at (%6.3f,%6.3f)'%red_clump)
@@ -276,13 +281,16 @@ def source_colour(ifile,vfile,interval=0.05,plotfile='source_colour.png'):
 
     return colour, delta_colour
 
-def plot_lightcurve(file, columns=(0,3,4),plotfile='lightcurve.png'):
+def plot_lightcurve(file, columns=(0,3,4),plotfile='lightcurve.png',grid_on=True):
 
     data = np.loadtxt(file)
  
     plt.figure(figsize=(8,5))
     plt.errorbar(data[:,columns[0]],data[:,columns[1]],data[:,columns[2]],fmt='.')
+    plt.gca().invert_yaxis()
     plt.xlabel(r'$HJD - 2450000$')
     plt.ylabel(r'$Magnitude$')
+    if grid_on:
+        plt.grid()
     plt.savefig(plotfile)
 

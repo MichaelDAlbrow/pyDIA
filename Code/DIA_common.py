@@ -253,7 +253,7 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 			sig.append(f.signal)
 
 		sig = np.asarray(sig)
-		sigcut = np.mean(sig) - np.std(sig)
+		sigcut = np.mean(sig) - 2.0*np.std(sig)
 		print 'signal: mean, std, cut = ',np.mean(sig),np.std(sig),sigcut
 
 
@@ -284,13 +284,13 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 		for f in ref_list:
 			sig.append(f.signal)
 		sig = np.asarray(sig)
-		sigcut = np.mean(sig) - np.std(sig)
+		sigcut = np.mean(sig) - 2*np.std(sig)
 		print 'signal: mean, std, cut = ',np.mean(sig),np.std(sig),sigcut
 	   
 		ref_seeing = 1000
 		ref_roundness = 2.0
 		for f in ref_list:
-			if (f.roundness < ref_roundness) and (f.signal > sigcut):
+			if (f.fw < ref_seeing) and (f.signal > sigcut):
 				ref_sky = f.sky
 				ref_seeing = f.fw
 				ref_roundness = f.roundness
@@ -603,7 +603,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 			star_sky = stars[:,4]
 		if os.path.exists(star_file):
 			star_positions = np.genfromtxt(star_file)
-			star_sky = star_positons[:,0]*0.0;
+			star_sky = star_positions[:,0]*0.0;
 		else:
 			np.savetxt(star_file,star_positions)
 
