@@ -393,14 +393,17 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 	#
 	g = good_ref_list[0]
 	gstack = np.zeros([len(good_ref_list),g.result.model.shape[0],g.result.model.shape[1]])
+	mask = np.ones_like(g.result.model)
 	print 'final reference list'
 	for i,g in enumerate(good_ref_list):
 		if isinstance(g.result.model,np.ndarray):
 			print g.name, np.std(g.result.diff), np.median(g.result.model)
 			IO.write_image(g.result.model,params.loc_output+os.path.sep+'mr_'+g.name)
 			gstack[i,:,:] = g.result.model
+			mask *= g.mask
 	rr = np.median(gstack,axis=0)
 	IO.write_image(rr,params.loc_output+os.path.sep+reference_image)
+	IO.write_image(mask,params.loc_output+os.path.sep+'mask_'+reference_image)
 
 	for f in ref_list:
 		f.result = None
@@ -567,9 +570,16 @@ def imsub_all_fits(params,reference='ref.fits'):
 		print 'Reg = ',reg.name
 		stamp_positions = make_reference(files,reg,params,reference_image=reference)
 		ref = DS.Observation(params.loc_output+os.path.sep+reference,params)
+		mask, _ = IO.read_fits_file(params.loc_output+os.path.sep+'mask_'+reference)
+		ref.mask = mask
 		ref.register(reg,params)
 	else:
 		ref = DS.Observation(params.loc_output+os.path.sep+reference,params)
+		if os.path.exists(params.loc_output+os.path.sep+'maks_'+reference):
+			mask, _ = IO.read_fits_file(params.loc_output+os.path.sep+'mask_'+reference)
+		else:
+			mask = np.ones_like(ref.data)
+		ref.mask = mask
 		ref.register(reg,params)
 		stamp_positions = None
 		if params.use_stamps:
@@ -583,11 +593,11 @@ def imsub_all_fits(params,reference='ref.fits'):
 
 	pm = params.pixel_max
 	params.pixel_max *= 0.9
-	ref.mask = IM.compute_saturated_pixel_mask(ref.image,4,params)
+	ref.mask *= IM.compute_saturated_pixel_mask(ref.image,4,params)
 	params.pixel_max = pm
 	ref.blur = IM.boxcar_blur(ref.image)
 	if params.mask_cluster:
-		ref.mask = IM.mask_cluster(ref.image,ref.mask,params)
+		ref.mask *= IM.mask_cluster(ref.image,ref.mask,params)
 
 	#
 	# Detect stars and compute the PSF if we are doing photometry
