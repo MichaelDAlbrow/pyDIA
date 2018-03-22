@@ -10,7 +10,7 @@ from scipy.ndimage.filters import maximum_filter
 from skimage.feature import peak_local_max
 from scipy.odr import ODR, Model, RealData
 
-ZP = 27.0
+ZP = 25.0
 
 def locate_intercept(x,y,x_range):
     print 'locating offset'
@@ -113,13 +113,19 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
 
 
 
-def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,IV=None,RC=None,source_colour=None):
+def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,IV=None,RC=None,source_colour=None,xlabel=None,ylabel=None):
 
     if ifile is None:
         ifile = os.path.join(dirI,'ref.mags.calibrated')
 
     if vfile is None:
         vfile = os.path.join(dirV,'ref.mags.calibrated')
+
+    if xlabel is None:
+        xlabel = r'$(v-i)_{p}$'
+    if ylabel is None:
+        ylabel = r'$i_p$'
+
 
     im = np.loadtxt(ifile)
     vm = np.loadtxt(vfile)
@@ -129,8 +135,8 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
     plt.scatter(vm[p,3]-im[p,3],im[p,3],s=5)
     plt.grid()
     plt.gca().invert_yaxis()
-    plt.xlabel(r'$(v-i)_{p}$',fontsize='14')
-    plt.ylabel(r'$i_p$',fontsize='14')
+    plt.xlabel(xlabel,fontsize='14')
+    plt.ylabel(ylabel,fontsize='14')
     plt.title(dirI+' '+dirV)
 
     if RC is not None:
@@ -193,8 +199,8 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
         plt.grid()
         plt.gca().invert_yaxis()
         plt.legend(loc='upper left')
-        plt.xlabel(r'$(v-i)_{p}$',fontsize='14')
-        plt.ylabel(r'$i_p$',fontsize='14')
+        plt.xlabel(xlabel,fontsize='14')
+        plt.ylabel(ylabel,fontsize='14')
         plt.title(dirI+' '+dirV)
         plt.xlim((xmin,xmax))
         plt.ylim((ymax,ymin))

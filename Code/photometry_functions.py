@@ -109,6 +109,7 @@ def compute_xy_shift(pos1,pos2,threshold,dx=0.0,dy=0.0,degree=0):
 
 def detect_stars(f,params):
     print 'Detecting stars in',f.name
+    print 'Current directory is', os.getcwd()
     fp = params.loc_output+os.path.sep
     fn = f.fullname
     iraf.digiphot()

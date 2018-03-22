@@ -644,21 +644,26 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
     filenames = []
     nfiles = 0
 
+    print 'Searching in', params.loc_output, 'for', params.name_pattern
+
     for f in all_files:
 
-        if fnmatch.fnmatch(f,params.name_pattern):
+      if fnmatch.fnmatch(f,params.name_pattern):
 
-            basename = os.path.basename(f)
-            dfile = params.loc_output+os.path.sep+'d_'+basename
-            ktable = params.loc_output+os.path.sep+'k_'+basename
+          basename = os.path.basename(f)
+          dfile = params.loc_output+os.path.sep+'d_'+basename
+          ktable = params.loc_output+os.path.sep+'k_'+basename
 
-            if os.path.exists(dfile) and os.path.exists(ktable):
+          if os.path.exists(dfile) and os.path.exists(ktable):
 
-                nfiles += 1
-                filenames.append(f)
+              nfiles += 1
+              filenames.append(f)
 
     # Load the kernel tables
     # Load the difference images into a data cube
+
+    print len(filenames), 'files found'
+
 
     dates = np.zeros(nfiles)
     seeing = np.zeros(nfiles)
