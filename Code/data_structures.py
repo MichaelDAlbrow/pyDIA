@@ -16,6 +16,8 @@ class Observation(object):
     def get_data(self):
         if not(isinstance(self._data,np.ndarray)):
             self._data, _ = IO.read_fits_file(self.fullname)
+            if self._preconvolve_images:
+                self._data = IM.convolve_gauss(self._data,self._preconvolve_FWHM)
             self.data_median = np.median(self._data)
             self.shape = self._data.shape
         return self._data
@@ -87,6 +89,10 @@ class Observation(object):
         self._data = None
         self._image = None
         self._mask = None
+        self._preconvolve_images = False
+        if params.preconvolve_images:
+            self._preconvolve_images = True
+            self._preconvolve_FWHM = params.preconvolve_FWHM
         self.mask = IM.compute_saturated_pixel_mask(self.data,5,params) * \
                     IM.compute_bleed_mask(self.data,3,params)
         self.inv_variance = 1.0/(self.data/params.gain +
@@ -145,6 +151,8 @@ class Parameters:
         self.pixel_max = 50000
         self.pixel_min = 0.0
         self.pixel_rejection_threshold = 3.0
+        self.preconvolve_images = False
+        self.preconvolve_FWHM = 1.5
         self.psf_fit_radius = 3.0
         self.psf_profile_type = 'gaussian'
         self.readnoise = 1.0
