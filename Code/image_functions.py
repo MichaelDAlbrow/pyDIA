@@ -285,6 +285,7 @@ def compute_fwhm(f,params,width=20,seeing_file='seeing',image_name=False):
         xcen = c.shape[0]/2
         ycen = c.shape[1]/2
         c_small = c[xcen-20:xcen+20,ycen-20:ycen+20]
+        c_small -= np.min(c_small)
         xsize, ysize = c_small.shape
         xcen = c_small.shape[0]/2
         ycen = c_small.shape[1]/2
@@ -296,7 +297,7 @@ def compute_fwhm(f,params,width=20,seeing_file='seeing',image_name=False):
         gy =  g.y_stddev.value
         g_width = np.mean((gx,gy))/np.sqrt(2.0)
         g_roundness = np.max((gx,gy))/np.min((gx,gy))
-        #x1 = int(round(c.shape[0]*0.5))
+    #x1 = int(round(c.shape[0]*0.5))
         #x2 = int(round(c.shape[0]*0.5+width))
         #y1 = int(round(c.shape[1]*0.5))
         #xx = np.arange(x2-x1+1)

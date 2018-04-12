@@ -2006,10 +2006,10 @@ void cu_photom_converge(int profile_type,
         dx = sjx1 / sjx2;
         dy = sjy1 / sjy2;
 
-        if isnan(dx) {
+        if (isnan(dx)) {
           printf("Error: Nan detected in dx. %f %f %f %f\n",sjx1,sjx2,dx,max_flux);
         }
-        if isnan(dy) {
+        if (isnan(dy)) {
           printf("Error: Nan detected in dy. %f %f %f %f\n",sjy1,sjy2,dy,max_flux);
         }
 

@@ -313,7 +313,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
     # select PSF stars
     iraf.pstselect(image=f,photfile=fp+'temp.phot',pstfile=fp+'temp.pst',maxnpsf=40,
                    interactive='no',verify='no',datamin=1,fitrad=2.0,
-                   datamax=params.pixel_max,epadu=params.gain,psfrad=3*np.max([g.fw,1.8]),
+                   datamax=params.pixel_max,epadu=params.gain,psfrad=np.max([4.0,g.fw]),
                    readnoise=params.readnoise,noise='poisson')
 
     if params.star_file and params.star_file_has_magnitudes:
@@ -321,6 +321,7 @@ def compute_psf_image(params,g,psf_deg=1,psf_rad=8,
         # We don't need to do the photometry - only make the PSF
 
         # Initial PSF estimate to generate PSF groups
+        #psfrad=3*np.max([g.fw,1.8])
         iraf.psf(image=f,photfile=fp+'temp.phot',pstfile=fp+'temp.pst',psfimage=fp+'temp.psf',
                  function=params.psf_profile_type,opstfile=fp+'temp.opst',
                  groupfile=fp+'temp.psg',

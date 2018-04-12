@@ -575,7 +575,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 		ref.register(reg,params)
 	else:
 		ref = DS.Observation(params.loc_output+os.path.sep+reference,params)
-		if os.path.exists(params.loc_output+os.path.sep+'maks_'+reference):
+		if os.path.exists(params.loc_output+os.path.sep+'mask_'+reference):
 			mask, _ = IO.read_fits_file(params.loc_output+os.path.sep+'mask_'+reference)
 		else:
 			mask = np.ones_like(ref.data)
