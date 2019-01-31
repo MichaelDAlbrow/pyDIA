@@ -1589,6 +1589,7 @@ void cu_photom_converge(int profile_type,
   double  pi = 3.14159265, fwtosig = 0.8493218;
   double  max_shift = 0.2;
   int     converge_iterations = 40, fitbg = 0;
+  int     good_images;
 
 
   cpsf_stack = malloc(256 * nfiles * sizeof(double));
@@ -1836,8 +1837,15 @@ void cu_photom_converge(int profile_type,
 
         } else {
 
+          for (idx = 1; idx < 15; idx++) {
+            for (idy = 1; idy < 15; idy++) {
+              id = idx + idy * blockDimx;
+              mpsf[id] /= psf_sum; 
+            }
+          }
+
           fl = 0.0;
-          for (j = 0; j < 3; j++) {
+          for (j = 0; j < 1; j++) {
 
             fsum1 = fsum2 = fsum3 = fsum4 = fsum5 = fsum6 = 0.0;
 
@@ -1858,7 +1866,8 @@ void cu_photom_converge(int profile_type,
                   jx = (int)floor(ypos + 0.5) + idy - 8.0;
                   im_id = ifile * patch_area + ix + patch_size * jx;
 
-                  inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
+                  // inv_v = 1.0 / (1.0/inv_var[im_id] + fl * mpsf[id] / gain);
+                  inv_v = inv_var[im_id]; 
 
                   fsum1 += mpsf[id] * diff[im_id] * inv_v;
                   fsum2 += mpsf[id] * mpsf[id] * inv_v;
@@ -1866,6 +1875,17 @@ void cu_photom_converge(int profile_type,
                   fsum4 += mpsf[id] * inv_v;
                   fsum5 += inv_v;
                   fsum6 += diff[im_id] * inv_v;
+
+                  if (ifile == 375) {
+
+                    printf("ifile,idx,idy,ix,jx,mpsf,inv_v,diff, inv_var[im_id], gain: %d %d %d %d %d %f %f %f %f %f\n", ifile, idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id], gain);
+                    printf("fsum1, fsum2: %f %f\n", fsum1, fsum2);
+
+
+                  }
+
+
+
 
                 }
 
@@ -1880,7 +1900,7 @@ void cu_photom_converge(int profile_type,
             }
 
             if (isnan(fl)) {
-              printf("j: %d\n", j);
+              /* printf("j: %d\n", j); */
               for (idx = 0; idx < 16; idx++) {
                 for (idy = 0; idy < 16; idy++) {
                   id = idx + idy * blockDimx;
@@ -1888,8 +1908,10 @@ void cu_photom_converge(int profile_type,
                     ix = (int)floor(xpos + 0.5) + idx - 8.0;
                     jx = (int)floor(ypos + 0.5) + idy - 8.0;
                     im_id = ifile * patch_area + ix + patch_size * jx;
-                    inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
-                    // printf("ifile,idx,idy,ix,jx,mpsf,inv_v,diff, inv_var[im_id], gain: %d %d %d %d %d %f %f %f %f %f\n", ifile, idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id], gain);
+                    // inv_v = 1.0 / (1.0/inv_var[im_id] + fl * mpsf[id] / gain);  
+                    inv_v = inv_var[im_id]; 
+
+                    /* printf("ifile,idx,idy,ix,jx,mpsf,inv_v,diff, inv_var[im_id], gain: %d %d %d %d %d %f %f %f %f %f\n", ifile, idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id], gain); */
                   }
                 }
               }
@@ -1900,7 +1922,8 @@ void cu_photom_converge(int profile_type,
           } // End of iteration over j
 
           flux[ifile] = fl;
-          dflux[ifile] = sqrt(fsum3 * fsum3 / fsum2);
+          /* dflux[ifile] = sqrt(fsum3 * fsum3 / fsum2); */
+          dflux[ifile] = sqrt(1.0 / fsum2);
 
           if ((fabs(fl) > max_flux) && (fabs(fl) < 1.e5) && (im_qual[ifile] < im_qual_threshold)) {
             max_flux = fabs(fl);
@@ -1916,9 +1939,18 @@ void cu_photom_converge(int profile_type,
 
         // printf("max_flux: %f\n",max_flux);
 
+        printf("Iteration %d: computing contribution to coordinate correction.\n",iteration);
+        printf("im_qual_threshold = %f\n",im_qual_threshold);
+        printf("flux_threshold = %f\n",max_flux*0.1);
+
+        good_images = 0;
         for (ifile = 0; ifile < nfiles; ifile++) {
 
+          printf("ifile, flux[ifile], dflux[ifile], im_qual[ifile]: %d %g %g %g\n",ifile, flux[ifile], dflux[ifile], im_qual[ifile]);
+
           if ( (!isnan(flux[ifile])) && (fabs(flux[ifile]) > 0.1 * max_flux) && (fabs(flux[ifile]) > 10.0 * dflux[ifile]) && (im_qual[ifile] < im_qual_threshold)) {
+
+            good_images++;
 
             // Interpolate the PSF to the subpixel star coordinates
             for (i = 0; i < 256; i++) {
@@ -1963,7 +1995,8 @@ void cu_photom_converge(int profile_type,
                 jx = (int)floor(ypos + 0.5) + idy - 7;
                 im_id = ifile * patch_area + ix + patch_size * jx;
 
-                inv_v = 1.0 / (1.0 / inv_var[im_id] + flux[ifile] * mpsf[id] / gain);
+                /* inv_v = 1.0 / (1.0/inv_var[im_id] + fl * mpsf[id] / gain); */
+                inv_v = inv_var[im_id]; 
 
                 if ((inv_v > 0.0) && (fabs(psfxd[id]) > 1.e-8) && (fabs(psfyd[id]) > 1.e-8)) {
 
@@ -2003,30 +2036,36 @@ void cu_photom_converge(int profile_type,
 
         }  // End loop over files
 
-        dx = sjx1 / sjx2;
-        dy = sjy1 / sjy2;
+        printf("Iteration %d: %d images used.\n",iteration,good_images);
 
-        if (isnan(dx)) {
-          printf("Error: Nan detected in dx. %f %f %f %f\n",sjx1,sjx2,dx,max_flux);
+        if (good_images > 0) {
+
+          dx = sjx1 / sjx2;
+          dy = sjy1 / sjy2;
+
+          if (isnan(dx)) {
+            printf("Error: Nan detected in dx. %f %f %f %f\n",sjx1,sjx2,dx,max_flux);
+          }
+          if (isnan(dy)) {
+            printf("Error: Nan detected in dy. %f %f %f %f\n",sjy1,sjy2,dy,max_flux);
+          }
+
+          if (fabs(dx) > max_shift) {
+            dx = dx > 0 ? max_shift : -max_shift;
+          }
+          if (fabs(dy) > max_shift) {
+            dy = dy > 0 ? max_shift : -max_shift;
+          }
+
+
+          xpos -= dx;
+          ypos -= dy;
+
+          printf("dx dy: %f %f    +    %f %f    ->    %f %f\n", xpos + dx, ypos + dy, dx, dy, xpos, ypos);
+
+          rr = ((xpos - xpos1) * (xpos - xpos1) + (ypos - ypos1) * (ypos - ypos1));
+
         }
-        if (isnan(dy)) {
-          printf("Error: Nan detected in dy. %f %f %f %f\n",sjy1,sjy2,dy,max_flux);
-        }
-
-        if (fabs(dx) > max_shift) {
-          dx = dx > 0 ? max_shift : -max_shift;
-        }
-        if (fabs(dy) > max_shift) {
-          dy = dy > 0 ? max_shift : -max_shift;
-        }
-
-
-        xpos -= dx;
-        ypos -= dy;
-
-        printf("dx dy: %f %f    +    %f %f    ->    %f %f\n", xpos + dx, ypos + dy, dx, dy, xpos, ypos);
-
-        rr = ((xpos - xpos1) * (xpos - xpos1) + (ypos - ypos1) * (ypos - ypos1));
 
       } else {
 
@@ -2054,6 +2093,7 @@ void cu_photom_converge(int profile_type,
 
   subx = ceil(xpos + 0.5) - (xpos + 0.5);
   suby = ceil(ypos + 0.5) - (ypos + 0.5);
+
 
   for (ifile = 0; ifile < nfiles; ifile++) {
 
@@ -2086,7 +2126,7 @@ void cu_photom_converge(int profile_type,
     } else {
 
       fl = 0.0;
-      for (j = 0; j < 3; j++) {
+      for (j = 0; j < 1; j++) {
 
         fsum1 = fsum2 = fsum3 = fsum4 = fsum5 = fsum6 = 0.0;
 
@@ -2107,7 +2147,8 @@ void cu_photom_converge(int profile_type,
               jx = (int)floor(ypos + 0.5) + idy - 7;
               im_id = ifile * patch_area + ix + patch_size * jx;
 
-              inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
+              /* inv_v = 1.0 / (fl * mpsf[id] / gain); */
+              inv_v = inv_var[im_id]; 
 
               fsum1 += mpsf[id] * diff[im_id] * inv_v;
               fsum2 += mpsf[id] * mpsf[id] * inv_v;
@@ -2134,7 +2175,7 @@ void cu_photom_converge(int profile_type,
         }
 
         if (isnan(fl)) {
-          printf("ifile, j: %d %d\n", ifile, j);
+          /* printf("ifile, j: %d %d\n", ifile, j); */
           for (idx = 0; idx < 16; idx++) {
             for (idy = 0; idy < 16; idy++) {
               id = idx + idy * blockDimx;
@@ -2142,8 +2183,9 @@ void cu_photom_converge(int profile_type,
                 ix = (int)floor(xpos + 0.5) + idx - 8.0;
                 jx = (int)floor(ypos + 0.5) + idy - 8.0;
                 im_id = ifile * patch_area + ix + patch_size * jx;
-                inv_v = 1.0 / (1.0 / inv_var[im_id] + fl * mpsf[id] / gain);
-                printf("idx,idy,ix,jx,mpsf,inv_v,diff,inv_var: %d %d %d %d %f %f %f %f\n", idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id]);
+                inv_v = 1.0 / (fl * mpsf[id] / gain);
+                inv_v = inv_var[im_id]; 
+               /* printf("idx,idy,ix,jx,mpsf,inv_v,diff,inv_var: %d %d %d %d %f %f %f %f\n", idx, idy, ix, jx, mpsf[id], inv_v, diff[im_id], inv_var[im_id]); */
               }
             }
           }

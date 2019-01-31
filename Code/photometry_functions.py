@@ -156,7 +156,7 @@ def detect_stars(f,params):
 
 
 def choose_stamps(f,params):
-    mask = compute_saturated_pixel_mask(f.image,6,params)
+    mask = compute_saturated_pixel_mask(f.image,params)
     stars = detect_stars(f,params)
     (xmax,ymax) = f.image.shape
     n_good = 0

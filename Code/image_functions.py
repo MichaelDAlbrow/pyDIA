@@ -2,6 +2,7 @@ import os
 import numpy as np
 from scipy import ndimage
 from scipy.signal import fftconvolve, convolve2d
+from astropy.modeling import models, fitting
 
 
 def positional_shift(R,T):
@@ -17,6 +18,9 @@ def positional_shift(R,T):
     dx = (X*csmall).sum()/total - 6 + cind[0][0] - c.shape[0]/2.0
     dy = (Y*csmall).sum()/total - 6 + cind[1][0] - c.shape[1]/2.0
     return dx, dy
+
+
+
 
 
 def register(R,T,params):
@@ -43,7 +47,11 @@ def register(R,T,params):
     #    px, py = np.meshgrid(p[0],p[1])
     #    q = np.where((px>=0) & (px<R.data.shape[0]) & (py>=0) & (py<R.data.shape[1]))
     #    Tc[saturated_pixels[0][k],saturated_pixels[1][k]]= np.median(T.data[px[q],py[q]])
-    c = fftconvolve(Rc, Tc[::-1, ::-1])
+    Rcm = Rc - np.median(Rc)
+    Tcm = Tc - np.median(Tc)
+    c = fftconvolve(Rcm, Tcm[::-1, ::-1])
+    kernel = np.ones((3,3))
+    c = convolve2d(c,kernel)
     cind = np.where(c == np.max(c))
     xshift = cind[0][0]-Rc.shape[0]+1
     yshift = cind[1][0]-Rc.shape[1]+1
@@ -96,7 +104,25 @@ def compute_bleed_mask(d,radius,params):
     return mask
 
 
-def compute_saturated_pixel_mask(im,radius,params):
+def compute_bleed_mask2(d,params):
+
+    mask = np.ones_like(d,dtype=bool)
+    if (params.bleed_mask_multiplier_above == 0) and (params.bleed_mask_multiplier_below == 0):
+        return mask
+    for kernel_len in [2,3,5,7,10,15,23,34,51,77]:
+            lkernel = np.vstack((np.zeros(kernel_len),np.ones(kernel_len),np.zeros(kernel_len)))
+            lkernel /= np.sum(lkernel)
+            dl = convolve2d(d,lkernel.T,mode='same')
+            sy, sx  = np.where(dl>params.pixel_max)
+            for q in range(len(sx)):
+                ymin = max(0,int(sy[q]-params.bleed_mask_multiplier_below*kernel_len))
+                ymax = min(d.shape[1],int(sy[q]+params.bleed_mask_multiplier_above*kernel_len))
+                mask[ymin:ymax,sx[q]] = 0
+    return mask
+
+
+def compute_saturated_pixel_mask(im,params):
+    radius = params.mask_radius
     rad2 = radius*radius
     rad = int(np.ceil(radius))
     z = np.arange(2*rad+1)-rad
@@ -140,6 +166,23 @@ def compute_saturated_pixel_mask_2(im1,im2,radius,params):
         q = np.array([z[p[0]]+saturated_pixels[0][k],z[p[1]]+saturated_pixels[1][k]])
         s = np.asarray(np.where((q[0]>=0) & (q[0]<im1.shape[0]) &
                                 (q[1]>=0) & (q[1]<im1.shape[1])))[0]
+        mask[q[0,s],q[1,s]] = 0            
+    return mask
+
+
+def compute_kernel_saturation_mask(image,params):
+    cimage = convolve2d(image,params.pixel_saturation_kernel,mode='same')
+    rad2 = params.mask_radius**2
+    rad = int(np.ceil(params.mask_radius))
+    z = np.arange(2*rad+1)-rad
+    x,y = np.meshgrid(z,z)
+    p = np.array(np.where(x**2 + y**2 < rad2))
+    mask = np.ones(image.shape,dtype=bool)
+    saturated_pixels = np.where(cimage > params.pixel_saturation_kernel_max)
+    for k in range(saturated_pixels[0].size):
+        q = np.array([z[p[0]]+saturated_pixels[0][k],z[p[1]]+saturated_pixels[1][k]])
+        s = np.asarray(np.where((q[0]>=0) & (q[0]<image.shape[0]) &
+                                (q[1]>=0) & (q[1]<image.shape[1])))[0]
         mask[q[0,s],q[1,s]] = 0            
     return mask
 
@@ -205,6 +248,20 @@ def convolve_gauss(im,fwhm):
     return c
 
 
+def convolve_disk(im,radius):
+    from scipy.ndimage.filters import convolve
+    radius = int(radius)
+    diameter = 2*radius + 1
+    x = np.arange(diameter)-radius
+    xx,yy = np.meshgrid(x,x)
+    kernel = np.zeros((diameter,diameter))
+    kernel[xx**2+yy**2<=radius**2] = 1.0
+    kernel /= np.sum(kernel)
+    fp_im = im*1.0
+    c = convolve(fp_im,kernel)
+    return c
+
+
 def apply_photometric_scale(d,c,pdeg):
     p = np.zeros(d.shape)
     (m,n) = d.shape
@@ -246,10 +303,8 @@ def undo_photometric_scale(d,c,pdeg,size=None,position=(0,0)):
 
 def compute_fwhm(f,params,width=20,seeing_file='seeing',image_name=False):
 
-    from scipy.signal import fftconvolve
-    from scipy.interpolate import interp1d
-    from astropy.modeling import models, fitting
 
+  
     g_width = None
 
     if image_name:
@@ -487,3 +542,4 @@ def define_kernel_pixels(rad,INNER_RADIUS=7):
     print kCount-n_extend,'modified delta basis functions'
     print n_extend,'extended basis functions'
     return kInd, kExtended
+
