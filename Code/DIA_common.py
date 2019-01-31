@@ -40,10 +40,13 @@ import photometry_functions as PH
 
 import c_interface_functions as CIF
 
+from skimage.feature import register_translation
+
+
 def difference_image(ref,target,params,stamp_positions=None,
 					 psf_image=None,star_positions=None,
 					 star_group_boundaries=None,detector_mean_positions_x=None,
-					 detector_mean_positions_y=None,star_sky=None):
+					 detector_mean_positions_y=None,star_sky=None,kernelRadius=None,kernel_inner_rad=7):
 
 	from scipy.linalg import lu_solve, lu_factor, LinAlgError
 
@@ -56,9 +59,9 @@ def difference_image(ref,target,params,stamp_positions=None,
 	#kernelRadius = min(params.kernel_maximum_radius,
 	#                   max(params.kernel_minimum_radius,
 	#                       np.abs(target.fw-ref.fw)*params.fwhm_mult))
-	kernelRadius = min(params.kernel_maximum_radius,
-					   max(params.kernel_minimum_radius,
-						   np.sqrt(np.abs(target.fw**2-ref.fw**2))*params.fwhm_mult))
+	if kernelRadius is None:
+		kernelRadius = min(params.kernel_maximum_radius,max(params.kernel_minimum_radius,
+														   np.sqrt(np.abs(target.fw**2-ref.fw**2))*params.fwhm_mult))
 
 	#
 	# Mask saturated pixels
@@ -74,7 +77,7 @@ def difference_image(ref,target,params,stamp_positions=None,
 	if params.use_fft_kernel_pixels:
 		kernelIndex, extendedBasis = IM.define_kernel_pixels_fft(ref,target,kernelRadius+2,INNER_RADIUS=20,threshold=params.fft_kernel_threshold)
 	else:
-		kernelIndex, extendedBasis = IM.define_kernel_pixels(kernelRadius)
+		kernelIndex, extendedBasis = IM.define_kernel_pixels(kernelRadius,INNER_RADIUS=kernel_inner_rad)
 	nKernel = kernelIndex.shape[0]
 
 	#
@@ -280,6 +283,9 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 					print f.name, f.fw, f.sky, f.signal
 			params.reference_seeing_factor *= 1.02
 
+		if len(ref_list) > params.max_ref_images:
+			ref_list = ref_list[:params.max_ref_images]
+
 		sig = []
 		for f in ref_list:
 			sig.append(f.signal)
@@ -335,6 +341,8 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 		f.blur = IM.boxcar_blur(f.image)
 		good_ref_list.append(f)
 		print 'difference_image:',f.name,best_seeing_ref.name
+
+
 
 	if not(params.use_GPU) and (params.n_parallel > 1):
 		
@@ -518,7 +526,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 		reg = DS.EmptyBase()
 		reg.fw = 999.0
 		for f in files:
-			if (f.fw < reg.fw) and (f.fw > 1.2):
+			if (f.fw < reg.fw) and (f.fw > params.reference_min_seeing):
 				reg = f
 
 	print 'Registration image:',reg.name
@@ -593,7 +601,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 
 	pm = params.pixel_max
 	params.pixel_max *= 0.9
-	ref.mask *= IM.compute_saturated_pixel_mask(ref.image,4,params)
+	ref.mask *= IM.compute_saturated_pixel_mask(ref.image,params)
 	params.pixel_max = pm
 	ref.blur = IM.boxcar_blur(ref.image)
 	if params.mask_cluster:
@@ -622,16 +630,18 @@ def imsub_all_fits(params,reference='ref.fits'):
 	#
 	# If we have pre-determined star positions
 	#
-	#if params.star_file:
-	#	stars = np.genfromtxt(params.star_file)
-	#	star_positions = stars[:,1:3]
-	#	if params.star_reference_image:
-	#		star_ref, h = IO.read_fits_file(params.star_reference_image)
-	#		dy, dx = IM.positional_shift(ref.image,star_ref)
-	#		print 'position shift =',dx,dy
-	#		star_positions[:,0] += dx
-	#		star_positions[:,1] += dy
-	#	np.savetxt(star_file,star_positions)
+	if params.star_file:
+		stars = np.genfromtxt(params.star_file)
+		star_positions = stars[:,1:3]
+		if params.star_reference_image:
+			star_ref, h = IO.read_fits_file(params.star_reference_image)
+			offset, _, _ = register_translation(star_ref, ref.image, 1000)
+			dy, dx = offset
+			#dy, dx = IM.positional_shift(ref.image,star_ref)
+			print 'position shift =',dx,dy
+			star_positions[:,0] += dx
+			star_positions[:,1] += dy
+		np.savetxt(star_file,star_positions)
 
 	#
 	# If we are using a CPU, group the stars by location
@@ -758,7 +768,7 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 	#reg = Observation(params.loc_data+os.path.sep+
 	#                  params.registration_image,params)
 	ref.register(ref,params)
-	smask = IM.compute_saturated_pixel_mask(ref.image,6,params)
+	smask = IM.compute_saturated_pixel_mask(ref.image,params)
 	ref.inv_variance += 1 - smask
 	ktable = params.loc_output+os.path.sep+'k_'+os.path.basename(reference_image)
 	kernelIndex, extendedBasis, c, params = IO.read_kernel_table(ktable,params)

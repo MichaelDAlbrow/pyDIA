@@ -10,7 +10,6 @@ from scipy.ndimage.filters import maximum_filter
 from skimage.feature import peak_local_max
 from scipy.odr import ODR, Model, RealData
 
-ZP = 25.0
 
 def locate_intercept(x,y,x_range):
     print 'locating offset'
@@ -27,7 +26,7 @@ def locate_intercept(x,y,x_range):
     return a, ix
 
 
-def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sky_flux_cutoff_percent=0.1):
+def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sky_flux_cutoff_percent=0.1,ZP=25):
 
     magfile = os.path.join(dir,'ref.mags')
     fluxfile = os.path.join(dir,'ref.flux')
@@ -51,11 +50,14 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     # Axes definitions
     nullfmt = plt.NullFormatter()
     rect_scatter = [0.15, 0.15, 0.7, 0.7]
-    rect_histx = [0.15, 0.8, 0.7, 0.1]
-    rect_histy = [0.8, 0.15, 0.1, 0.7]
+    rect_histx = [0.15, 0.85, 0.7, 0.1]
+    rect_histy = [0.85, 0.15, 0.1, 0.7]
 
     binsize = 0.5
     bandwidth = 0.25
+
+    ymin, ymax = (offset-1,offset+1)
+    binsize_y = 0.05
 
     fig = plt.figure()
     ax1 = fig.add_subplot(223, position=rect_scatter)
@@ -65,10 +67,9 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     ax1.plot(x,x*0.0+offset,'r',label=r'$\Delta mag = %4.2f$'%offset)
     ax1.grid()
     ax1.legend(loc='upper left')
-    ax1.set_xlabel('DAOPhot mag',fontsize='14')
-    ax1.set_ylabel('ZP-2.5*log(pyDIA flux)-(DAOPhot mag)',fontsize='14')
+    ax1.set_xlabel(r'$M_{\rm DAO}$',fontsize='14')
+    ax1.set_ylabel(r'$%5.2f-2.5*\log_{10} F_{\rm P}-M_{\rm DAO}$'%ZP,fontsize='14')
     xmin, xmax  = plt.xlim()
-    ymin, ymax  = plt.ylim()
     xx = np.linspace(xmin,xmax,1000)
     
     ax2 = fig.add_subplot(221, position=rect_histx)
@@ -84,13 +85,13 @@ def calibrate(dir,plotfile='calibration.png',magnitude_range_fraction=(0.1,8),sk
     ax2.set_title(dir)
 
     ax3 = fig.add_subplot(221, position=rect_histy)
-    ax3.hist(ZP-2.5*np.log10(flux[p,0])-mag[p,3],range=(ymin,ymax),bins=int((ymax-ymin)/binsize+1),
+    ax3.hist(ZP-2.5*np.log10(flux[p,0])-mag[p,3],range=(ymin,ymax),bins=int((ymax-ymin)/binsize_y+1),
             orientation='horizontal',normed=True,alpha=0.3)
     ax3.xaxis.set_major_formatter(nullfmt)
     ax3.yaxis.set_major_formatter(nullfmt)
 
-    ax1.set_ylim((offset-1,offset+1))
-    ax3.set_ylim((offset-1,offset+1))
+    ax1.set_ylim((ymin,ymax))
+    ax3.set_ylim((ymin,ymax))
     plt.savefig(os.path.join(dir,plotfile))
 
     ax1.set_ylim((offset-0.1,offset+0.1))
@@ -122,9 +123,9 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
         vfile = os.path.join(dirV,'ref.mags.calibrated')
 
     if xlabel is None:
-        xlabel = r'$(v-i)_{p}$'
+        xlabel = r'$(V-I)_{\rm P}$'
     if ylabel is None:
-        ylabel = r'$i_p$'
+        ylabel = r'$I_{\rm p}$'
 
 
     im = np.loadtxt(ifile)
