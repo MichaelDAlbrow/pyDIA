@@ -802,7 +802,8 @@ __global__ void cu_photom(int profile_type,
 
     __syncthreads();
 
-/* Uncomment to print convolved PSF   
+/* Uncomment to print convolved PSF   */
+   /*
    if ((id == 0) && (blockIdx.x==14)){
      txa = 7;
      tyb = 7;
@@ -886,6 +887,7 @@ __global__ void cu_photom(int profile_type,
 */
 
 /* Uncomment to print mapped PSF */
+/*
   if ((id == 0) && (blockIdx.x==14)){
      printf("xpos, ypos: %f %f\\n",xpos,ypos);
      printf("subx, suby: %f %f\\n",subx,suby);
@@ -901,6 +903,7 @@ __global__ void cu_photom(int profile_type,
      }
      printf("sum = %f\\n",dd);
    }  
+*/
    __syncthreads();
 
    
@@ -933,7 +936,8 @@ __global__ void cu_photom(int profile_type,
         ix = (int)floorf(xpos+0.5)+threadIdx.x-8.0;
         jx = (int)floorf(ypos+0.5)+threadIdx.y-8.0;
 
-        inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
+        /* inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain); */
+        inv_var = tex2DLayered(tex,ix,jx,1);
 
         fsum1[id] = mpsf[id]*tex2DLayered(tex,ix,jx,0)*inv_var;
         fsum2[id] = mpsf[id]*mpsf[id]*inv_var;
@@ -969,7 +973,7 @@ __global__ void cu_photom(int profile_type,
      
    if (id == 0) {
      flux[blockIdx.x] = fl;
-     dflux[blockIdx.x] = sqrt(fsum3[0]*fsum3[0]/fsum2[0]);
+     dflux[blockIdx.x] = sqrt(1.0/fsum2[0]);
    }
 
 /* Uncomment for debug info */
