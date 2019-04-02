@@ -571,7 +571,7 @@ __global__ void cu_photom(int profile_type,
                           float *psf_0, float *psf_xd, float *psf_yd,
                           float *posx,
                           float *posy, float *coeff, 
-                          float *flux, float *dflux, float *star_sky) {
+                          float *flux, float *dflux) {
 
    int     id, txa, tyb, txag, tybg;
    int     np, ns, i, j, ip, jp, ic, ki, a, b;
@@ -803,8 +803,9 @@ __global__ void cu_photom(int profile_type,
 
     __syncthreads();
 
-/* Uncomment to print convolved PSF   
-   if ((id == 0) && (blockIdx.x==14)){
+/* Uncomment to print convolved PSF   */
+/*
+   if ((id == 0) && (blockIdx.x==1000)){
      txa = 7;
      tyb = 7;
      ip = psf_size/2 + 2*txa - 15;
@@ -820,9 +821,7 @@ __global__ void cu_photom(int profile_type,
               psf_xd[ip+psf_size*jp]*(xpos-psf_xpos),
               psf_yd[ip+psf_size*jp]*(ypos-psf_ypos));
       }    
-             
-              
-
+ 
      dd = 0.0;
      printf("cpsf\\n");
      for (j=15; j>=0; j--) {
@@ -836,8 +835,11 @@ __global__ void cu_photom(int profile_type,
      printf("sum = %f\\n",dd);
      printf("psf lookup table fraction: %f\\n",psf_sum[0]/psf_norm);
    }
-   */
+   
+*/            
+              
 
+ 
 
    
    __syncthreads();
@@ -870,7 +872,7 @@ __global__ void cu_photom(int profile_type,
 
    //
    // Normalise mapped PSF
-   //  (No - the convolved PSF contains the phot scale)
+   //  (No don't do this - the convolved PSF contains the photometric scale)
 /*
    cpsf[id] = mpsf[id];
    __syncthreads();
@@ -887,7 +889,8 @@ __global__ void cu_photom(int profile_type,
 */
 
 /* Uncomment to print mapped PSF */
-  if ((id == 0) && (blockIdx.x==14)){
+/*
+  if ((id == 0) && (blockIdx.x==1000)){
      printf("xpos, ypos: %f %f\\n",xpos,ypos);
      printf("subx, suby: %f %f\\n",subx,suby);
      printf("mpsf\\n");
@@ -901,7 +904,8 @@ __global__ void cu_photom(int profile_type,
        printf("\\n");
      }
      printf("sum = %f\\n",dd);
-   }  
+   }
+*/
    __syncthreads();
 
    
@@ -934,15 +938,16 @@ __global__ void cu_photom(int profile_type,
         ix = (int)floor(xpos+0.5)+threadIdx.x-8.0;
         jx = (int)floor(ypos+0.5)+threadIdx.y-8.0;
 
-        inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);
+        /*  inv_var = 1.0/(1.0/tex2DLayered(tex,ix,jx,1) + fl*mpsf[id]/gain);  */
+        inv_var = tex2DLayered(tex,ix,jx,1);
 
         fsum1[id] = mpsf[id]*tex2DLayered(tex,ix,jx,0)*inv_var;
         fsum2[id] = mpsf[id]*mpsf[id]*inv_var;
         fsum3[id] = mpsf[id]; 
 
         /*
-        if ((blockIdx.x==14)){
-           printf("ix jx mpsf im: %03d %03d %6.5f %12.2f\\n",ix,jx,mpsf[id],tex2DLayered(tex,ix,jx,0));
+        if ((blockIdx.x==1000)){
+           printf("ix jx mpsf im: %03d %03d %6.5f %12.2f %12.2f\\n",ix,jx,mpsf[id],tex2DLayered(tex,ix,jx,0),sqrt(1.0/tex2DLayered(tex,ix,jx,1)));
         }
         */
 
@@ -970,8 +975,14 @@ __global__ void cu_photom(int profile_type,
      
    if (id == 0) {
      flux[blockIdx.x] = fl;
-     dflux[blockIdx.x] = sqrt(fsum3[0]*fsum3[0]/fsum2[0]);
+     dflux[blockIdx.x] = sqrt(1.0/fsum2[0]);
    }
+
+  /*
+  if ((id == 0) && (blockIdx.x==1000)){
+    printf("flux, dflux: %f %f\\n",flux[blockIdx.x],dflux[blockIdx.x]);
+  }
+  */
 
 /* Uncomment for debug info */
 /*
@@ -987,7 +998,7 @@ __global__ void cu_photom(int profile_type,
    __syncthreads();
 
    if (id == 0) {
-     if (blockIdx.x == 120) {
+     if (blockIdx.x == 1000) {
        printf("result: %f %f %f %f %f %f %f %f %f %f %f %f\\n",fsum1[0],fsum2[0],fsum3[0],mpsf[0],psf_norm,psf_sum[0],bgnd,flux[blockIdx.x],flux[blockIdx.x]*fsum3[0],flux[blockIdx.x]*mpsf[0],fsum4[0],dflux[blockIdx.x]);
      }
    }

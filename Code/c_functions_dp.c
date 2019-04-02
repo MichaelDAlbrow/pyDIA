@@ -789,43 +789,43 @@ void cu_multi_photom(int profile_type,
 
     // For variance map
 
-    if (iteration > 0) {
+    // if (iteration > 0) {
 
-      for (istar = i_group_previous; istar<group_boundaries[i_group]; istar++) {
+    //   for (istar = i_group_previous; istar<group_boundaries[i_group]; istar++) {
 
-        // Map the PSF for star istar
+    //     // Map the PSF for star istar
 
-        for (i = 0; i < 256; i++) {
-          cpsf[i] = cpsf0[i];
-        }
+    //     for (i = 0; i < 256; i++) {
+    //       cpsf[i] = cpsf0[i];
+    //     }
 
-        resolve_coeffs_2d(16, 16, 16, cpsf);
+    //     resolve_coeffs_2d(16, 16, 16, cpsf);
 
-        xpos = posx[istar];
-        ypos = posy[istar];
-        subx = ceil(xpos + 0.5 + 0.0000000001) - (xpos + 0.5);
-        suby = ceil(ypos + 0.5 + 0.0000000001) - (ypos + 0.5);
+    //     xpos = posx[istar];
+    //     ypos = posy[istar];
+    //     subx = ceil(xpos + 0.5 + 0.0000000001) - (xpos + 0.5);
+    //     suby = ceil(ypos + 0.5 + 0.0000000001) - (ypos + 0.5);
 
-        for (idx = 0; idx < blockDimx; idx++) {
-          for (idy = 0; idy < blockDimy; idy++) {
-            id = idx + idy * blockDimx;
-            mpsf1[id] = 0.0;
-            if ((idx > 1) && (idx < 14) && (idy > 1) && (idy < 14)) {
-              mpsf1[id] =  max(0.0,interpolate_2d(subx, suby, 16, &cpsf[idx - 2 + (idy - 2) * blockDimx]));
-              ix = (int)floor(xpos + 0.5) + idx - 8.0;
-              jx = (int)floor(ypos + 0.5) + idy - 8.0;
-              if ((ix>=0) && (ix<nx) && (jx>=0) && (jx<ny)) {
-                tex1[ix+nx*jx] += flux[istar]*mpsf1[id]/gain;
-              }
-            }
-          }
-        }
-      }
+    //     for (idx = 0; idx < blockDimx; idx++) {
+    //       for (idy = 0; idy < blockDimy; idy++) {
+    //         id = idx + idy * blockDimx;
+    //         mpsf1[id] = 0.0;
+    //         if ((idx > 1) && (idx < 14) && (idy > 1) && (idy < 14)) {
+    //           mpsf1[id] =  max(0.0,interpolate_2d(subx, suby, 16, &cpsf[idx - 2 + (idy - 2) * blockDimx]));
+    //           ix = (int)floor(xpos + 0.5) + idx - 8.0;
+    //           jx = (int)floor(ypos + 0.5) + idy - 8.0;
+    //           if ((ix>=0) && (ix<nx) && (jx>=0) && (jx<ny)) {
+    //             tex1[ix+nx*jx] += flux[istar]*mpsf1[id]/gain;
+    //           }
+    //         }
+    //       }
+    //     }
+    //   }
 
       //printf("variance map computed\n");
 
 
-    }
+    //}
 
     //printf("Beginning loop over istar\n");
 
@@ -916,7 +916,8 @@ void cu_multi_photom(int profile_type,
                 idy2 = idy-iy_offset;
                 id2 = idx2 + idy2 * blockDimx;
 
-                inv_var = iteration > 0 ? 1.0/tex1[ix + nx *jx] : tex1[ix + nx * jx];
+                // inv_var = iteration > 0 ? 1.0/tex1[ix + nx *jx] : tex1[ix + nx * jx];
+                inv_var = tex1[ix + nx * jx];
 
                 fsum += mpsf1[id]*mpsf2[id2]*inv_var;
 
@@ -959,7 +960,8 @@ void cu_multi_photom(int profile_type,
             id = idx + idy * blockDimx;
 
 
-            inv_var = iteration > 0 ? 1.0/tex1[ix + nx *jx] : tex1[ix + nx * jx];
+            // inv_var = iteration > 0 ? 1.0/tex1[ix + nx *jx] : tex1[ix + nx * jx];
+            inv_var = tex1[ix + nx * jx];
 
             //fsum += mpsf1[id]*inv_var;
             rsum += mpsf1[id]*tex0[ix + nx * jx]*inv_var;
@@ -1283,7 +1285,7 @@ void cu_photom(int profile_type,
 
       // printf("flux for star %d: %f +/- %f\n",blockIdx,fl,sqrt(fsum3*fsum3/fsum2));
       flux[blockIdx] = fl;
-      dflux[blockIdx] = sqrt(fsum3 * fsum3 / fsum2);
+      dflux[blockIdx] = sqrt(1.0 / fsum2);
 
       // Subtract each model star from the image as we go
       //if (subtract == 1) {
@@ -1840,7 +1842,7 @@ void cu_photom_converge(int profile_type,
           for (idx = 1; idx < 15; idx++) {
             for (idy = 1; idy < 15; idy++) {
               id = idx + idy * blockDimx;
-              mpsf[id] /= psf_sum; 
+              // mpsf[id] /= psf_sum; 
             }
           }
 
@@ -2194,7 +2196,7 @@ void cu_photom_converge(int profile_type,
       }
 
       flux[ifile] = fl;
-      dflux[ifile] = sqrt(fsum3 * fsum3 / fsum2);
+      dflux[ifile] = sqrt(1.0 / fsum2);
 
       // Subtract fitted PSF from difference images
 

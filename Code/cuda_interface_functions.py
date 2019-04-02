@@ -252,6 +252,8 @@ def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
     psf_yd = psf.astype(np.float32).copy()*0.0
     flux = np.float32(posy.copy() * 0.0);
     dflux = np.float32(posy.copy() * 0.0);
+
+    coeffs = c.astype(np.float32).copy()
  
     cu_photom = cu_matrix_kernel.get_function('cu_photom')
 
@@ -262,7 +264,7 @@ def photom_all_stars(diff,inv_variance,positions,psf_image,c,kernelIndex,
                   np.int32(kernelRadius),cuda.In(k0),
                   cuda.In(k1),cuda.In(extendedBasis),
                   cuda.In(psf_parameters),cuda.In(psf_0),cuda.In(psf_xd),cuda.In(psf_yd),
-                  cuda.In(posx),cuda.In(posy),cuda.In(c),cuda.Out(flux),cuda.Out(dflux),
+                  cuda.In(posx),cuda.In(posy),cuda.In(coeffs),cuda.Out(flux),cuda.Out(dflux),
                   block=blockDim,grid=gridDim,
                   texrefs=[texref])
     except:

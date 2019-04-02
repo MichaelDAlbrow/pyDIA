@@ -14,7 +14,7 @@ def get_date(file,key='JD'):
 
 
 def read_fits_file(file,slice=None):
-    if slice:
+    if slice is not None:
         f = fits.open(file,memmap=True)
         data = f[0].section[slice[2]:slice[3],slice[0]:slice[1]]
         hdr = f[0].header

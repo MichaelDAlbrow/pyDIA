@@ -113,6 +113,11 @@ class Observation(object):
         print self.name
         self._image, self._mask, self._inv_variance = IM.register(reg,self,
                                                                   params)
+        if self._image is None:
+            return False
+
+        print 'registered', self.name
+        
         rf = os.path.join(self.output_dir,'r_'+self.name)
         IO.write_image(self._image,rf)
         rf = os.path.join(self.output_dir,'sm_'+self.name)
@@ -122,6 +127,8 @@ class Observation(object):
         del self.mask
         del self.data
         del self.inv_variance
+
+        return True
 
 
 class Parameters:

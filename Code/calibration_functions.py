@@ -167,6 +167,7 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
 
     if plot_density:
 
+        p = np.where((im[:,4] > 0) & (vm[:,4] > 0) & (im[:,3] < 18) & (vm[:,3] < 21))[0]
         plt.figure()
         samples = np.vstack([vm[p,3]-im[p,3],im[p,3]]).T
         kde_skl = KernelDensity(kernel='gaussian',bandwidth=bandwidth)
@@ -182,7 +183,8 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
         plt.contourf(Y, X, Z, levels=levels, cmap=plt.cm.Reds)
         Zmax = np.max(np.max(Z))
         mx = maximum_filter(Z,size=20)
-        lm = (Z == mx) * (Z > 0.01*Zmax) * (Z < 0.99*Zmax)
+        #lm = (Z == mx) * (Z > 0.01*Zmax) * (Z < 0.99*Zmax)
+        lm = (Z == mx) * (Z > 0.01*Zmax)
         if np.sum(lm) > 0:
             nlm = np.nonzero(lm)
             max_nlm = np.argmax(Z[nlm])
@@ -211,7 +213,12 @@ def makeCMD(dirI,dirV,bandwidth = 0.25,ifile=None,vfile=None,plot_density=True,I
     return red_clump
 
 
-def source_colour(ifile,vfile,interval=0.05,plotfile='source_colour.png'):
+def source_colour(ifile,vfile,plotfile='source_colour.png',VIoffset=0.0):
+
+    # Define a function (quadratic in our case) to fit the data with.
+    def linear_func1(p, x):
+        m, c = p
+        return m*x + c
 
     Idata = np.loadtxt(ifile)
     Vdata = np.loadtxt(vfile)
@@ -221,68 +228,72 @@ def source_colour(ifile,vfile,interval=0.05,plotfile='source_colour.png'):
     Idata = Idata[qI]
     Vdata = Vdata[qV]
 
-    interval = 0.05
-    start = np.floor(np.min(Idata[:,0]))
-    end = np.ceil(np.max(Idata[:,0]))
+    intervals=[0.025,0.05,0.1,0.2]
+    colour = []
+    delta_colour = []
 
-    time = np.arange(start,end,interval)
+    plt.figure(figsize=(12,12))
 
-    flux1 = np.zeros_like(time) + np.nan
-    flux2 = np.zeros_like(time) + np.nan
-    flux1_err = np.zeros_like(time) + np.nan
-    flux2_err = np.zeros_like(time) + np.nan
+    for inter,interval in enumerate(intervals):
 
-    for i in range(len(time)):
-        q = np.where(np.abs(Idata[:,0] - time[i]) < interval/2.0)[0]
-        if q.any():
-            flux1[i] =  np.sum(Idata[q,1]/Idata[q,2]**2) / np.sum(1.0/Idata[q,2]**2)
-            flux1_err[i] =  np.sqrt(1.0 / np.sum(1.0/Idata[q,2]**2))
+        start = np.floor(np.min(Idata[:,0]))
+        end = np.ceil(np.max(Idata[:,0]))
 
-            p = np.where(np.abs(Vdata[:,0] - time[i]) < interval/2.0)[0]
-            if p.any():
-                flux2[i] =  np.sum(Vdata[p,1]/Vdata[p,2]**2) / np.sum(1.0/Vdata[p,2]**2)
-                flux2_err[i] =  np.sqrt(1.0 / np.sum(1.0/Vdata[p,2]**2))
+        time = np.arange(start,end,interval)
 
-    plt.figure()
-    plt.errorbar(flux1,flux2,xerr=flux1_err,yerr=flux2_err,fmt='.')
-    plt.xlabel(r'$\delta F_I$')
-    plt.ylabel(r'$\delta F_V$')
-    plt.grid()
+        flux1 = np.zeros_like(time) + np.nan
+        flux2 = np.zeros_like(time) + np.nan
+        flux1_err = np.zeros_like(time) + np.nan
+        flux2_err = np.zeros_like(time) + np.nan
 
-    # Define a function (quadratic in our case) to fit the data with.
-    def linear_func1(p, x):
-        m, c = p
-        return m*x + c
+        for i in range(len(time)):
+            q = np.where(np.abs(Idata[:,0] - time[i]) < interval/2.0)[0]
+            if q.any():
+                flux1[i] =  np.sum(Idata[q,1]/Idata[q,2]**2) / np.sum(1.0/Idata[q,2]**2)
+                flux1_err[i] =  np.sqrt(1.0 / np.sum(1.0/Idata[q,2]**2))
 
-    # Create a model for fitting.
-    linear_model = Model(linear_func1)
+                p = np.where(np.abs(Vdata[:,0] - time[i]) < interval/2.0)[0]
+                if p.any():
+                    flux2[i] =  np.sum(Vdata[p,1]/Vdata[p,2]**2) / np.sum(1.0/Vdata[p,2]**2)
+                    flux2_err[i] =  np.sqrt(1.0 / np.sum(1.0/Vdata[p,2]**2))
 
-    good_data = np.where(np.logical_and(np.isfinite(flux1),np.isfinite(flux2)))[0]
-    offset =  np.mean(flux2[good_data]-flux1[good_data])
+        plt.subplot(2,2,inter+1)
+        plt.errorbar(flux1/1000.0,flux2/1000.0,xerr=flux1_err,yerr=flux2_err,fmt='.')
+        plt.xlabel(r'$\delta F_I (000)$')
+        plt.ylabel(r'$\delta F_V (000)$')
+        plt.grid()
 
-    # Create a RealData object using our initiated data from above.
-    data = RealData(flux1[good_data], flux2[good_data], sx=flux1_err[good_data], sy=flux2_err[good_data])
 
-    # Set up ODR with the model and data.
-    odr = ODR(data, linear_model, beta0=[1.0, offset])
+        # Create a model for fitting.
+        linear_model = Model(linear_func1)
 
-    # Run the regression.
-    out = odr.run()
+        good_data = np.where(np.logical_and(np.isfinite(flux1),np.isfinite(flux2)))[0]
+        offset =  np.mean(flux2[good_data]-flux1[good_data])
 
-    # Use the in-built pprint method to give us results.
-    out.pprint()
+        # Create a RealData object using our initiated data from above.
+        data = RealData(flux1[good_data], flux2[good_data], sx=flux1_err[good_data], sy=flux2_err[good_data])
 
-    x1, x2 = plt.gca().get_xlim()
-    x_fit = np.linspace(x1,x2, 1000)
-    y_fit = linear_func1(out.beta, x_fit)
+        # Set up ODR with the model and data.
+        odr = ODR(data, linear_model, beta0=[1.0, offset])
 
-    plt.plot(x_fit,y_fit,'r-',label=r"$\delta F_V = %5.3f \delta F_I + %5.3f$"%(out.beta[0],out.beta[1]))
-    colour = -2.5*np.log10(out.beta[0])
+        # Run the regression.
+        out = odr.run()
 
-    delta_colour = -2.5*np.log10(out.beta[0]-out.sd_beta[0]) - colour
+        # Use the in-built pprint method to give us results.
+        out.pprint()
 
-    plt.title(r'$(V-I)_S = %8.3f \pm %8.3f$'%(colour,delta_colour))
-    plt.legend()
+        x1, x2 = plt.gca().get_xlim()
+        x_fit = np.linspace(x1,x2, 1000)
+        y_fit = linear_func1(out.beta, x_fit)
+
+        plt.plot(x_fit/1000.0,y_fit/1000.0,'r-',label=r"$\delta F_V = %5.3f \delta F_I + %5.3f$"%(out.beta[0],out.beta[1]))
+
+        colour.append(VIoffset-2.5*np.log10(out.beta[0]))
+
+        delta_colour.append(VIoffset-2.5*np.log10(out.beta[0]-out.sd_beta[0]) - colour[inter])
+
+        plt.title(r'$\Delta t = %5.3f \quad (V-I)_S = %8.3f \pm %8.3f$'%(interval,colour[inter],delta_colour[inter]))
+        plt.legend()
 
     plt.savefig(plotfile)
 

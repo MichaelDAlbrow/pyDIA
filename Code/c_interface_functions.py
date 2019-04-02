@@ -460,8 +460,8 @@ def photom_all_stars_simultaneous(diff,inv_variance,positions,psf_image,c,kernel
 		posx = np.float64(positions[:,0]-1.0)
 		posy = np.float64(positions[:,1]-1.0)
 	else:
-		posx = np.float64(positions[:,0])
-		posy = np.float64(positions[:,1])
+		posx = np.float64(positions[:,0]-0.0)
+		posy = np.float64(positions[:,1]-0.0)
 		
 	psf_0 = psf.astype(np.float64)
 	psf_xd = np.zeros_like(psf_0,dtype=np.float64)
@@ -523,24 +523,24 @@ def photom_all_stars_simultaneous(diff,inv_variance,positions,psf_image,c,kernel
 	  A = csc_matrix((val,(i_ind,j_ind)),shape=(nstars, nstars))
 
 	  flux = np.float64(sp_linalg.spsolve(A, rvec))
-	  dflux = sp_linalg.spsolve(A, np.ones_like(rvec))
+	  dflux = np.sqrt(sp_linalg.spsolve(A, np.ones_like(rvec)))
 	
 	  print 'flux =', flux
 	  print 'dflux =', dflux
 
 	  cdiff = np.float64(diff).copy()
 
-	  #cu_make_residual(np.int(profile_type), diff.shape[1], diff.shape[0], params.pdeg,
-	  #        params.sdeg, c.shape[0], kernelIndex.shape[0],
-	  #        np.int(kernelRadius), k0,
-	  #        k1, extendedBasis,
-	  #        psf_parameters, psf_0, psf_xd, psf_yd,
-	  #        posx, posy, c64, flux, dflux, long(nstars), 16, 16, cdiff,
-	  #        np.float64(inv_variance),np.int32(star_group_boundaries),
-	  #        np.float64(detector_mean_positions_x),
-	  #        np.float64(detector_mean_positions_y),star_group_boundaries.shape[0])
+	  cu_make_residual(np.int(profile_type), diff.shape[1], diff.shape[0], params.pdeg,
+	          params.sdeg, c.shape[0], kernelIndex.shape[0],
+	          np.int(kernelRadius), k0,
+	          k1, extendedBasis,
+	          psf_parameters, psf_0, psf_xd, psf_yd,
+	          posx, posy, c64, flux, dflux, long(nstars), 16, 16, cdiff,
+	          np.float64(inv_variance),np.int32(star_group_boundaries),
+	          np.float64(detector_mean_positions_x),
+	          np.float64(detector_mean_positions_y),star_group_boundaries.shape[0])
 
-	  #IO.write_image(cdiff,'dref.fits')
+	  IO.write_image(cdiff,params.loc_output+os.path.sep+'p_clean_ref.fits')
 
 	return flux, dflux
 	
@@ -707,7 +707,32 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
 	  y_patch = y0 - iy0 + patch_half_width
 
 	  patch_size = 2*patch_half_width+1
-	  patch_slice = (ix0-patch_half_width, ix0+patch_half_width+1, iy0-patch_half_width, iy0+patch_half_width+1)
+	  patch_slice = np.array([ix0-patch_half_width, ix0+patch_half_width+1, iy0-patch_half_width, iy0+patch_half_width+1])
+	  print 'patch_slice:', patch_slice
+
+	  # check that patch doesn't overlap the edge of the image
+	  f = filenames[0]
+	  diff, _ = IO.read_fits_file(params.loc_output+os.path.sep+'d_'+os.path.basename(f))
+	  nx = diff.shape[1]
+	  ny = diff.shape[0]
+	  delta_patch_x = 0
+	  delta_patch_y = 0
+	  if patch_slice[0] < 0:
+	  	delta_patch_x = -patch_slice[0]
+	  elif patch_slice[1] >= nx:
+	  	delta_patch_x = nx - patch_slice[1] - 1
+	  if patch_slice[2] < 0:
+	  	delta_patch_y = -patch_slice[2]
+	  elif patch_slice[3] >= ny:
+	  	delta_patch_y = ny - patch_slice[3] - 1
+
+	  print 'delta_patch_x, delta_patch_y:', delta_patch_x, delta_patch_y
+
+	  patch_slice += np.array([delta_patch_x,delta_patch_x,delta_patch_y,delta_patch_y])
+	  print 'patch_slice:', patch_slice
+
+	  x_patch -= delta_patch_x
+	  y_patch -= delta_patch_y
 
 	  d_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
 	  inv_var_image_stack = np.zeros((nfiles,patch_size,patch_size),dtype=np.float64)
@@ -734,6 +759,7 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
 		  mask, _ = IO.read_fits_file(zfile)
 		  iv, _ = IO.read_fits_file(ivfile)
 		  diff_sc = IM.undo_photometric_scale(diff,c,params.pdeg)
+		  #diff_sc = diff
 		  #diff_sc -= median_filter(diff_sc,footprint=filter_kernel)
 		  diff_sc *= mask
 		  d_image_stack[i,:,:] = diff_sc[patch_slice[2]:patch_slice[3],patch_slice[0]:patch_slice[1]]
@@ -743,11 +769,10 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
 		  d_image_stack[i,:,:] -= np.median(d_image_stack[i,:,:])
 
 	  print 'kappa-clipping'
-	  qd1 = np.arange(len(filenames))
-	  #qd = np.where(diff_std[qd1]<10)
-	  #qd1 = qd1[qd]
+	  qd = np.arange(len(filenames))
+	  qd1 = np.where(np.isfinite(diff_std))[0]
 	  for iter in range(10):
-		  qd = np.where(diff_std[qd1]<np.mean(diff_std[qd1])+(4.0-1.5*(iter/9.0))*np.std(diff_std[qd1]))
+		  qd = np.where(diff_std[qd1]<np.mean(diff_std[qd1])+(4.0-1.5*(iter/9.0))*np.std(diff_std[qd1]))[0]
 		  qd1 = qd1[qd]
 		  print iter, np.mean(diff_std[qd1]), np.std(diff_std[qd1]), np.mean(diff_std[qd1])+(4.0-3*(iter/9.0))*np.std(diff_std[qd1])
 
@@ -792,16 +817,18 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
 		  dsum += d_image_stack[i,:,:]
 	  IO.write_image(dsum,params.loc_output+os.path.sep+'dsum%d.fits'%iteration)
 	  dr = patch_half_width-int(locate_half_width)
-	  dsum[:dr,:] = 0.0
-	  dsum[-dr:,:] = 0.0
-	  dsum[:,:dr] = 0.0
-	  dsum[:,-dr:] = 0.0
+	  print 'dr:', dr
+	  dsum[:dr-delta_patch_y,:] = 0.0
+	  dsum[-dr-delta_patch_y:,:] = 0.0
+	  dsum[:,:dr-delta_patch_x] = 0.0
+	  dsum[:,-dr-delta_patch_x:] = 0.0
+	  IO.write_image(dsum,params.loc_output+os.path.sep+'dsum_m%d.fits'%iteration)
 	  ind_dsum_max = np.unravel_index(dsum.argmax(),dsum.shape)
 	  print 'Iteration',iteration,': dsum maximum located at ',ind_dsum_max
 
 	  if locate and converge:
-		y0 += ind_dsum_max[0] - patch_half_width
-		x0 += ind_dsum_max[1] - patch_half_width
+		y0 += ind_dsum_max[0] - patch_half_width + delta_patch_y
+		x0 += ind_dsum_max[1] - patch_half_width + delta_patch_x
 
 
 	# Read the PSF
@@ -846,6 +873,9 @@ def photom_variable_star(x0,y0,params,patch_half_width=15,converge=True,save_sta
 
 	x0_arr = np.atleast_1d(np.array([x0],dtype=np.float64))
 	y0_arr = np.atleast_1d(np.array([y0],dtype=np.float64))
+
+	print 'x0, y0:', x0, y0
+	print 'x_patch, y_patch:', x_patch, y_patch
 
 	cu_photom_converge(profile_type, patch_half_width, params.pdeg, params.sdeg, nfiles, 
 						n_kernel, kindex_x, kindex_y, kindex_ext, n_coeffs, coeffs.astype(np.float64),

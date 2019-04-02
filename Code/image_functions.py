@@ -26,14 +26,18 @@ def positional_shift(R,T):
 def register(R,T,params):
     #Tc = T.data*T.mask
     #Rc = R.data*R.mask
+    Tc_data = T.data.copy()
+    Tc_data[T.mask==0] = np.median(Tc_data[T.mask==1])
+    Rc_data = R.data.copy()
+    Rc_data[R.mask==0] = np.median(Rc_data[R.mask==1])
     if isinstance(params.fwhm_section,np.ndarray):
         w = params.fwhm_section
-        Tc = T.data[w[2]:w[3],w[0]:w[1]].copy()
-        Rc = R.data[w[2]:w[3],w[0]:w[1]].copy()
+        Tc = Tc_data[w[2]:w[3],w[0]:w[1]].copy()
+        Rc = Rc_data[w[2]:w[3],w[0]:w[1]].copy()
     else:
-        Tc = T.data
-        Rc = R.data
-    nx, ny = R.shape
+        Tc = Tc_data
+        Rc = Rc_data
+    #nx, ny = R.shape
     #z = np.arange(-3,4)
     #saturated_pixels = np.where(R.mask==0)
     #for k in range(saturated_pixels[0].size):
@@ -50,10 +54,19 @@ def register(R,T,params):
     Rcm = Rc - np.median(Rc)
     Tcm = Tc - np.median(Tc)
     c = fftconvolve(Rcm, Tcm[::-1, ::-1])
+    print c.shape
     kernel = np.ones((3,3))
-    c = convolve2d(c,kernel)
+    c = convolve2d(c,kernel,mode='same')
+    print c.shape
     cind = np.where(c == np.max(c))
-    xshift = cind[0][0]-Rc.shape[0]+1
+    print np.max(c)
+    print cind
+    print Rc.shape
+    try:
+        xshift = cind[0][0]-Rc.shape[0]+1
+    except IndexError:
+        print 'Warning:',T.fullname, 'failed to register.'
+        return None, None, None
     yshift = cind[1][0]-Rc.shape[1]+1
     imint = max(0,-xshift)
     imaxt = min(R.shape[0],R.shape[0]-xshift)

@@ -8,7 +8,7 @@ import c_interface_functions as CF
 from astropy.io import fits
 
 def process_KMT_patch(site,coords=None,quality_max=1.25,mag_err_max=0.3,seeing_max=7.0,sky_max=10000,signal_min=125,name_pattern_has_site=True,date_header='MIDHJD',
-						parameters=None,q_sigma_threshold=1.0,locate_date_range=None,locate_half_width=None):
+						parameters=None,q_sigma_threshold=1.0,locate_date_range=None,locate_half_width=None,loc_data='RAW'):
 
 	params = DIA.DS.Parameters()
 	params.gain = 1.5
@@ -22,7 +22,7 @@ def process_KMT_patch(site,coords=None,quality_max=1.25,mag_err_max=0.3,seeing_m
 	params.bdeg = 1
 	params.reference_seeing_factor = 1.01
 	params.reference_min_seeing = 1.0
-	params.loc_data = 'RAW'
+	params.loc_data = loc_data
 	params.fwhm_mult = 10
 	params.iterations = 5
 
@@ -111,7 +111,7 @@ def process_KMT_patch(site,coords=None,quality_max=1.25,mag_err_max=0.3,seeing_m
 				y0 += np.median(Vmags[:,2]-Imags[:,2])
 				print 'Starting photometry for',prefix,'at', (x0,y0)
 				dates, seeing, roundness, bgnd, signal, flux, dflux, quality, x0, y0 = \
-						CF.photom_variable_star(x0,y0,params,save_stamps=True,patch_half_width=20,converge=True)
+						CF.photom_variable_star(x0,y0,params,save_stamps=True,patch_half_width=20,converge=False)
 				print 'Converged to', (x0,y0)
 
 			print 'Photometry for', site, band, 'at', x0, y0
@@ -137,7 +137,8 @@ def process_KMT_patch(site,coords=None,quality_max=1.25,mag_err_max=0.3,seeing_m
 			if band == 'V':
 				signal_min = 0.0
 				
-			q = np.where( (quality < quality_max) & (mag_err < mag_err_max) & (seeing < seeing_max) & (bgnd < sky_max) & (signal > signal_min) )[0]
+			q = np.where( (quality < quality_max) & (mag_err < mag_err_max) & (seeing < seeing_max) & (bgnd < sky_max) & (signal > signal_min) & \
+							(np.abs(flux) > 1.0e-6)  )[0]
 			median_mag[band] = np.nanmedian(mag[q])
 
 			np.savetxt(prefix+'-lightcurve-filtered.dat',np.vstack((dates[q],flux[q],dflux[q], \
@@ -153,7 +154,7 @@ def process_KMT_patch(site,coords=None,quality_max=1.25,mag_err_max=0.3,seeing_m
 
 	RC = cal.makeCMD(site+'I',site+'V')
 
-	VI, VI_err = cal.source_colour(site+'I-lightcurve-filtered.dat',site+'V-lightcurve-filtered.dat',plotfile=site+'-source-colour.png')
+	VI, VI_err = cal.source_colour(site+'I-lightcurve-filtered.dat',site+'V-lightcurve-filtered.dat',plotfile=site+'-source-colour.png',VIoffset=0.65)
 
 	cal.makeCMD(site+'I',site+'V',plot_density=False,IV=(median_mag['I'],median_mag['V']),RC=RC,source_colour=(VI,VI_err))
 

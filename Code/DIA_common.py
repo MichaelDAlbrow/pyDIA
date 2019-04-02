@@ -99,11 +99,11 @@ def difference_image(ref,target,params,stamp_positions=None,
 		#
 		H, V, texref = CI.compute_matrix_and_vector_cuda(ref.image,ref.blur,
 														target.image,target.inv_variance,
-													  	tmask,kernelIndex,
-													  	extendedBasis,
-													  	kernelRadius,
-													  	params,
-													  	stamp_positions=stamp_positions)
+														tmask,kernelIndex,
+														extendedBasis,
+														kernelRadius,
+														params,
+														stamp_positions=stamp_positions)
 		
 
 		#
@@ -128,6 +128,9 @@ def difference_image(ref,target,params,stamp_positions=None,
 		#
 		print 'Computing model',time.time()-start
 		g.model = CI.compute_model_cuda(ref.image.shape,texref,c,kernelIndex,extendedBasis,params)
+		edges = np.where(ref.image < 1.0)
+		g.model[edges] = 0.0
+
 
 		#
 		# Compute the difference image
@@ -164,6 +167,9 @@ def difference_image(ref,target,params,stamp_positions=None,
 		kf = params.loc_output+os.path.sep+'k_'+os.path.basename(target.name)
 		IO.write_kernel_table(kf,kernelIndex,extendedBasis,c,params)
 
+		print 'coeffs', c
+
+
 	g.norm = difference*np.sqrt(target.inv_variance)
 	g.variance = 1.0/target.inv_variance
 	g.mask = tmask
@@ -178,11 +184,12 @@ def difference_image(ref,target,params,stamp_positions=None,
 		if ref.name == target.name:
 			sky_image, _ = IO.read_fits_file(params.loc_output+os.path.sep+'temp.sub2.fits')
 			phot_target = ref.image - sky_image
+			IO.write_image(phot_target,params.loc_output+os.path.sep+'clean_'+ref.name)
 			g.flux, g.dflux = CIF.photom_all_stars_simultaneous(phot_target,target.inv_variance,star_positions,
 													psf_image,c,kernelIndex,extendedBasis,kernelRadius,params,
-                                 					star_group_boundaries,
-                                  					detector_mean_positions_x,detector_mean_positions_y)
- 		else:
+													star_group_boundaries,
+													detector_mean_positions_x,detector_mean_positions_y)
+		else:
 			phot_target = difference
 			g.flux, g.dflux = CI.photom_all_stars(phot_target,target.inv_variance,star_positions,
 													psf_image,c,kernelIndex,extendedBasis,
@@ -401,6 +408,7 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 	#
 	g = good_ref_list[0]
 	gstack = np.zeros([len(good_ref_list),g.result.model.shape[0],g.result.model.shape[1]])
+	var_ref = np.zeros_like(gstack)
 	mask = np.ones_like(g.result.model)
 	print 'final reference list'
 	for i,g in enumerate(good_ref_list):
@@ -408,10 +416,12 @@ def make_reference(files,reg,params,reference_image='ref.fits'):
 			print g.name, np.std(g.result.diff), np.median(g.result.model)
 			IO.write_image(g.result.model,params.loc_output+os.path.sep+'mr_'+g.name)
 			gstack[i,:,:] = g.result.model
+			var_ref += g.result.model/params.gain + (params.readnoise/params.gain)**2
 			mask *= g.mask
 	rr = np.median(gstack,axis=0)
 	IO.write_image(rr,params.loc_output+os.path.sep+reference_image)
 	IO.write_image(mask,params.loc_output+os.path.sep+'mask_'+reference_image)
+	IO.write_image(var_ref/np.float(len(good_ref_list)),params.loc_output+os.path.sep+'var_'+reference_image)
 
 	for f in ref_list:
 		f.result = None
@@ -441,14 +451,17 @@ def process_image(f,args):
 		del f.mask
 		del f.inv_variance
 
+		print 'flux[100:110]:'
+		print result.flux[100:110]
+
 		#
 		# Save photometry to a file
 		#
 		if isinstance(result.flux,np.ndarray):
-			if not(params.use_GPU):
-				print 'ungrouping fluxes'
-				result.flux = result.flux[star_unsort_index].copy()
-				result.dflux = result.dflux[star_unsort_index].copy()
+			#if not(params.use_GPU):
+			print 'ungrouping fluxes'
+			result.flux = result.flux[star_unsort_index].copy()
+			result.dflux = result.dflux[star_unsort_index].copy()
 			np.savetxt(params.loc_output+os.path.sep+f.name+'.flux',
 					   np.vstack((result.flux,result.dflux)).T)
 			f.flux = result.flux.copy()
@@ -535,13 +548,17 @@ def imsub_all_fits(params,reference='ref.fits'):
 	#
 	# Register images
 	#
+	print 'Registering images'
+	files_copy = [f for f in files]
 	for f in files:
+		print f.name
 		if f == reg:
 			f.image = f.data
 			rf = params.loc_output+os.path.sep+'r_'+f.name
 			IO.write_image(f.image,rf)
 		else:
-			f.register(reg,params)
+			if not f.register(reg,params):
+				files_copy.remove(f)
 			# delete image arrays to save memory
 			del f.image
 			del f.mask
@@ -550,7 +567,7 @@ def imsub_all_fits(params,reference='ref.fits'):
 		del reg.image
 		del reg.mask
 		del reg.inv_variance
-
+	files = files_copy
 
 	#
 	# Write image names and dates to a file
@@ -579,7 +596,9 @@ def imsub_all_fits(params,reference='ref.fits'):
 		stamp_positions = make_reference(files,reg,params,reference_image=reference)
 		ref = DS.Observation(params.loc_output+os.path.sep+reference,params)
 		mask, _ = IO.read_fits_file(params.loc_output+os.path.sep+'mask_'+reference)
+		variance, _ = IO.read_fits_file(params.loc_output+os.path.sep+'var_'+reference)
 		ref.mask = mask
+		ref.inv_variance = 1.0/variance
 		ref.register(reg,params)
 	else:
 		ref = DS.Observation(params.loc_output+os.path.sep+reference,params)
@@ -639,8 +658,8 @@ def imsub_all_fits(params,reference='ref.fits'):
 			dy, dx = offset
 			#dy, dx = IM.positional_shift(ref.image,star_ref)
 			print 'position shift =',dx,dy
-			star_positions[:,0] += dx
-			star_positions[:,1] += dy
+			star_positions[:,0] -= dx
+			star_positions[:,1] -= dy
 		np.savetxt(star_file,star_positions)
 
 	#
@@ -726,39 +745,36 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 	#
 	# Detect stars and compute the PSF if necessary
 	#
-	if params.do_photometry:
-		psf_file = params.loc_output+os.path.sep+psf_file
-		if os.path.exists(params.star_file):
-			star_pos = np.genfromtxt(params.star_file)[:,1:3]
-			if not(os.path.exists(psf_file)):
-				stars = PH.compute_psf_image(params,ref,psf_image=psf_file)
+
+	psf_file = params.loc_output+os.path.sep+psf_file
+	star_file = params.loc_output+os.path.sep+star_file
+
+	print psf_file
+	print os.path.exists(psf_file)
+	print star_file
+	print os.path.exists(star_file)
+
+	if not(os.path.exists(psf_file)) or not(os.path.exists(star_file)):
+		stars = PH.compute_psf_image(params,ref,psf_image=psf_file)
+
+	if star_positions is None:
+
+		if os.path.exists(star_file):
+			star_positions = np.genfromtxt(star_file)[:,:2]
 		else:
-			if not(os.path.exists(star_file)):
-				stars = PH.compute_psf_image(params,ref,psf_image=psf_file)
-				star_pos = stars[:,0:2]
-				np.savetxt(star_file,star_pos)
-			else:
-				star_pos = np.genfromtxt(star_file)
-				if not(os.path.exists(psf_file)):
-					stars = PH.compute_psf_image(params,ref,psf_image=psf_file)
+			star_positions = stars[:,0:2]
+
 
 	#
-	# Have we been passed an array of star positions?
-	#
-	if star_positions == None:
-		star_positions = star_pos
-
-	#
-	# If we are using a CPU, group the stars by location
+	# Group the stars by location
 	#
 	star_group_boundaries = None
 	detector_mean_positions_x = None
 	detector_mean_positions_y = None
-	if not(params.use_GPU):
-		star_sort_index,star_group_boundaries,detector_mean_positions_x,detector_mean_positions_y = \
-					PH.group_stars_ccd(params,star_positions,params.loc_output+os.path.sep+reference_image)
-		star_positions = star_positions[star_sort_index]
-		star_unsort_index = np.argsort(star_sort_index)
+	star_sort_index,star_group_boundaries,detector_mean_positions_x,detector_mean_positions_y = \
+				PH.group_stars_ccd(params,star_positions,params.loc_output+os.path.sep+reference_image)
+	star_positions = star_positions[star_sort_index]
+	star_unsort_index = np.argsort(star_sort_index)
 
 	#
 	# Process the reference image
@@ -767,9 +783,13 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 	ref = DS.Observation(params.loc_output+os.path.sep+reference_image,params)
 	#reg = Observation(params.loc_data+os.path.sep+
 	#                  params.registration_image,params)
+	mask, _ = IO.read_fits_file(params.loc_output+os.path.sep+'mask_'+reference_image)
+	variance, _ = IO.read_fits_file(params.loc_output+os.path.sep+'var_'+reference_image)
+	ref.mask = mask
+	ref.inv_variance = 1.0/variance + (1-mask)
 	ref.register(ref,params)
 	smask = IM.compute_saturated_pixel_mask(ref.image,params)
-	ref.inv_variance += 1 - smask
+	ref.inv_variance += (1 - (smask*mask))*1.e-12
 	ktable = params.loc_output+os.path.sep+'k_'+os.path.basename(reference_image)
 	kernelIndex, extendedBasis, c, params = IO.read_kernel_table(ktable,params)
 	kernelRadius = np.max(kernelIndex[:,0])+1
@@ -779,22 +799,21 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 	print 'extendedBasis',extendedBasis
 	print 'coeffs', c
 	print 'kernelRadius',kernelRadius
-	phot_target = ref.image
-	ref.flux, ref.dflux = PH.photom_all_stars(phot_target,ref.inv_variance,star_positions,
-												psf_file,c,kernelIndex,extendedBasis,
-										   		kernelRadius,
-										   		params,
-										   		star_group_boundaries,
-										   		detector_mean_positions_x,
-										   		detector_mean_positions_y, sky=sky)
+	print 'star_positions', star_positions.shape
+	phot_target, _ = IO.read_fits_file(params.loc_output+os.path.sep+'clean_'+reference_image)
+	ref.flux, ref.dflux = CIF.photom_all_stars_simultaneous(phot_target,ref.inv_variance,star_positions,
+													psf_file,c,kernelIndex,extendedBasis,kernelRadius,params,
+													star_group_boundaries,
+													detector_mean_positions_x,detector_mean_positions_y)
 
 	if isinstance(ref.flux,np.ndarray):
 		if not(params.use_GPU):
 			print 'ungrouping fluxes'
 			ref.flux = ref.flux[star_unsort_index].copy()
 			ref.dflux = ref.dflux[star_unsort_index].copy()
+			print ref.flux.shape, star_positions.shape
 		np.savetxt(params.loc_output+os.path.sep+reference_image+'.'+extname,
-				   np.vstack((ref.flux,ref.dflux)).T)
+				   np.vstack((ref.flux,ref.dflux)))
 
 	#
 	# Process difference images
@@ -827,21 +846,32 @@ def do_photometry(params,extname='newflux',star_file='star_positions',
 				print 'coeffs', c
 				print 'kernelRadius',kernelRadius
 
+				IO.write_image(diff,params.loc_output+os.path.sep+'diff1.fits')
 				diff = IM.undo_photometric_scale(diff,c,params.pdeg)
-				
-				flux, dflux = PH.photom_all_stars(diff,inv_var,star_positions,
-											   		psf_file,c,kernelIndex,extendedBasis,
-											   		kernelRadius,params,
-											   		star_group_boundaries,
-											   		detector_mean_positions_x,
-											   		detector_mean_positions_y)
+				IO.write_image(diff,params.loc_output+os.path.sep+'diff2.fits')
+				IO.write_image(inv_var,params.loc_output+os.path.sep+'inv_var.fits')
+				IO.write_kernel_table(params.loc_output+os.path.sep+'ktable.fits',kernelIndex,extendedBasis,c,params)
 
+
+				flux, dflux = CI.photom_all_stars(diff,inv_var,star_positions,
+													psf_file,c,kernelIndex,extendedBasis,
+													kernelRadius,params,
+													star_group_boundaries,
+													detector_mean_positions_x,
+													detector_mean_positions_y)
+
+
+
+				print 'flux[100:110]:'
+				print flux[100:110]
 				if isinstance(flux,np.ndarray):
 					if not(params.use_GPU):
 						print 'ungrouping fluxes'
 						flux = flux[star_unsort_index].copy()
 						dflux = dflux[star_unsort_index].copy()
+						print 'unsort flux[100:110]:'
+						print flux[100:110]
 					np.savetxt(params.loc_output+os.path.sep+f.name+'.'+extname,
 							   np.vstack((flux,dflux)).T)
 
-
+				sys.exit(0)
