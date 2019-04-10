@@ -258,7 +258,7 @@ def source_colour(ifile,vfile,plotfile='source_colour.png',VIoffset=0.0):
                     flux2_err[i] =  np.sqrt(1.0 / np.sum(1.0/Vdata[p,2]**2))
 
         plt.subplot(2,2,inter+1)
-        plt.errorbar(flux1/1000.0,flux2/1000.0,xerr=flux1_err,yerr=flux2_err,fmt='.')
+        plt.errorbar(flux1/1000.0,flux2/1000.0,xerr=flux1_err/1000.0,yerr=flux2_err/1000.0,fmt='.')
         plt.xlabel(r'$\delta F_I (000)$')
         plt.ylabel(r'$\delta F_V (000)$')
         plt.grid()
