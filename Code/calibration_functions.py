@@ -286,7 +286,7 @@ def source_colour(ifile,vfile,plotfile='source_colour.png',VIoffset=0.0):
         x_fit = np.linspace(x1,x2, 1000)
         y_fit = linear_func1(out.beta, x_fit)
 
-        plt.plot(x_fit/1000.0,y_fit/1000.0,'r-',label=r"$\delta F_V = %5.3f \delta F_I + %5.3f$"%(out.beta[0],out.beta[1]))
+        plt.plot(x_fit,y_fit,'r-',label=r"$\delta F_V = %5.3f \delta F_I + %5.3f$"%(out.beta[0],out.beta[1]))
 
         colour.append(VIoffset-2.5*np.log10(out.beta[0]))
 
